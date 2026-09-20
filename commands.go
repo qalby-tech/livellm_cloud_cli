@@ -118,6 +118,11 @@ type resource struct {
 	StopsAt   string   `json:"stopsAt,omitempty"`
 }
 
+// statusWarning carries why the live state is missing, when it is: a resource
+// list that silently says "unknown" for everything is worse than one that says
+// what went wrong.
+var statusWarning string
+
 func resources() ([]resource, error) {
 	var ws struct {
 		Spec struct {
@@ -146,7 +151,10 @@ func resources() ([]resource, error) {
 			} `json:"endpoints"`
 		} `json:"workloads"`
 	}
-	_ = call("GET", "/v1/status", nil, &live)
+	statusWarning = ""
+	if err := call("GET", "/v1/status", nil, &live); err != nil {
+		statusWarning = "couldn't read how things are running: " + err.Error()
+	}
 	byID := map[string]int{}
 	for i, w := range live.Workloads {
 		byID[w.ID] = i
@@ -191,7 +199,11 @@ func cmdList(args []string) error {
 			out = append(out, r)
 		}
 	}
-	return print(map[string]any{"resources": out})
+	answer := map[string]any{"resources": out}
+	if statusWarning != "" {
+		answer["warning"] = statusWarning
+	}
+	return print(answer)
 }
 
 func cmdStatus(args []string) error {
