@@ -287,7 +287,7 @@ func cmdKeys([]string) error {
 func cmdCreate(args []string) error {
 	kind, rest, err := needArg(args, "kind of resource")
 	if err != nil {
-		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage or browser")
+		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage, browser — or apps, several at once")
 	}
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the resource's settings")
@@ -298,6 +298,27 @@ func cmdCreate(args []string) error {
 	raw, err := os.ReadFile(*file)
 	if err != nil {
 		return err
+	}
+	// Several apps at once, all or nothing: the file holds a list of app
+	// settings (or {"apps": [...]}), the same bodies `create pod` takes.
+	if kind == "apps" {
+		var list []map[string]any
+		if err := json.Unmarshal(raw, &list); err != nil {
+			var wrapped struct {
+				Apps []map[string]any `json:"apps"`
+			}
+			if err := json.Unmarshal(raw, &wrapped); err != nil || len(wrapped.Apps) == 0 {
+				return fmt.Errorf("%s should hold a list of apps, or {\"apps\": [...]}", *file)
+			}
+			list = wrapped.Apps
+		}
+		var out struct {
+			Created []string `json:"created"`
+		}
+		if err := call("POST", "/v1/workloads", map[string]any{"apps": list}, &out); err != nil {
+			return err
+		}
+		return print(map[string]any{"created": out.Created})
 	}
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
