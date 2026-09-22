@@ -1,0 +1,55 @@
+# Build on every change; on a v* tag attach one binary per platform to a
+# GitHub release. No release tooling, no signing keys — `go build` for each
+# pair, which is what a single-file Go program with no dependencies needs.
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Vet and build
+        run: |
+          gofmt -l . | tee /tmp/fmt
+          test ! -s /tmp/fmt
+          go vet ./...
+          go build ./...
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build every platform
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          for pair in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${pair%%/*}"; arch="${pair##*/}"
+            out="livellm"
+            [ "$os" = "windows" ] && out="livellm.exe"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "$out" .
+            tar -czf "dist/livellm_${v}_${os}_${arch}.tar.gz" "$out"
+            rm -f "$out"
+          done
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

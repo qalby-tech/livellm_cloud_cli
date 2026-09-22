@@ -4,7 +4,7 @@ The command line for LiveLLM Cloud: your machines, browsers, apps and databases
 from a terminal.
 
 ```sh
-go install github.com/qalby-tech/livellm_cloud_skills/cli@latest
+go install github.com/qalby-tech/livellm_cloud_cli@latest
 
 livellm login          # opens a link; press Allow in the console
 livellm ls             # what you have
@@ -21,5 +21,9 @@ talks to the same public API as everything else. `LIVELLM_API_KEY` works
 instead of signing in, for anything unattended; `LIVELLM_API_URL` points it at
 a self-hosted LiveLLM.
 
-The agent skill in this repo drives the same API — this is the same platform
-for a person at a keyboard.
+Binaries for Linux, macOS and Windows are on the
+[releases page](https://github.com/qalby-tech/livellm_cloud_cli/releases).
+
+An AI assistant drives the same API through the
+[LiveLLM skill](https://github.com/qalby-tech/livellm_cloud_skills) — this is
+the same platform for a person at a keyboard.
