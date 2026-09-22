@@ -45,7 +45,7 @@ jobs:
             out="livellm"
             [ "$os" = "windows" ] && out="livellm.exe"
             GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "$out" .
+              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "$out" ./cmd/livellm
             tar -czf "dist/livellm_${v}_${os}_${arch}.tar.gz" "$out"
             rm -f "$out"
           done

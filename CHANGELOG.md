@@ -3,6 +3,12 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.1.4
+
+- `go install github.com/qalby-tech/livellm_cloud_cli/cmd/livellm@latest`
+  installs a binary called `livellm` (the module path alone installed one
+  called `livellm_cloud_cli`).
+
 ## 0.1.3
 
 - The command line has its own repository. Until now it lived inside the

@@ -4,7 +4,7 @@ The command line for LiveLLM Cloud: your machines, browsers, apps and databases
 from a terminal.
 
 ```sh
-go install github.com/qalby-tech/livellm_cloud_cli@latest
+go install github.com/qalby-tech/livellm_cloud_cli/cmd/livellm@latest
 
 livellm login          # opens a link; press Allow in the console
 livellm ls             # what you have
