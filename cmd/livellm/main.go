@@ -21,6 +21,14 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm status [ID]                        how things are running right now
   livellm logs ID [--lines N]                recent logs, and restarts
   livellm connect ID [--tool TOOL]           how to reach it
+          [--desktop N] [--screen-width PX] [--format png|jpeg]
+  livellm exec ID "COMMAND"                  run a command on a Linux machine
+          [--session S] [--timeout N] [--desktop N]
+  livellm share ID [--control] [--for 1h|24h|7d] [--desktop N]
+                                             a link to watch or use a screen
+  livellm shares ID                          a screen's open links
+  livellm unshare ID LINK                    close a screen link now
+  livellm release ID                         let go of a machine held for work on it
   livellm keys                               the workspace's SSH keys
 
   livellm create TYPE -f FILE                create a resource from a JSON file
@@ -59,6 +67,16 @@ func main() {
 		err = cmdLogs(args)
 	case "connect":
 		err = cmdConnect(args)
+	case "exec":
+		err = cmdExec(args)
+	case "share":
+		err = cmdShare(args)
+	case "shares":
+		err = cmdShares(args)
+	case "unshare":
+		err = cmdUnshare(args)
+	case "release":
+		err = cmdRelease(args)
 	case "keys", "ssh-keys":
 		err = cmdKeys(args)
 	case "create":

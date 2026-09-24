@@ -248,10 +248,26 @@ func cmdConnect(args []string) error {
 	}
 	fs := flag.NewFlagSet("connect", flag.ExitOnError)
 	tool := fs.String("tool", "", "cdp, view, api or computer, when a resource offers several")
+	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
+	width := fs.Int("screen-width", 0, "computer: shrink screenshots to this many pixels wide (320-3840)")
+	format := fs.String("format", "", "computer: png or jpeg")
 	_ = fs.Parse(rest)
 	body := map[string]any{}
 	if *tool != "" {
 		body["tool"] = *tool
+	}
+	if *desktop >= 0 {
+		body["desktop"] = *desktop
+	}
+	screen := map[string]any{}
+	if *width > 0 {
+		screen["width"] = *width
+	}
+	if *format != "" {
+		screen["format"] = *format
+	}
+	if len(screen) > 0 {
+		body["screen"] = screen
 	}
 	var out map[string]any
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/connect", body, &out); err != nil {
@@ -272,6 +288,106 @@ func cmdConnect(args []string) error {
 				}
 			}
 		}
+	}
+	return print(out)
+}
+
+func cmdExec(args []string) error {
+	id, rest, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 || strings.HasPrefix(rest[0], "-") {
+		return fmt.Errorf("which command? livellm exec %s \"uname -a\"", id)
+	}
+	command, rest := rest[0], rest[1:]
+	fs := flag.NewFlagSet("exec", flag.ExitOnError)
+	session := fs.String("session", "", "commands in the same session share a working folder")
+	timeout := fs.Int("timeout", 60, "seconds, up to 600")
+	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
+	_ = fs.Parse(rest)
+	body := map[string]any{"command": command, "timeout": *timeout}
+	if *session != "" {
+		body["session"] = *session
+	}
+	if *desktop >= 0 {
+		body["desktop"] = *desktop
+	}
+	// The answer comes when the command ends: wait a little longer than it may run.
+	if t := time.Duration(*timeout+30) * time.Second; t > client.Timeout {
+		client.Timeout = t
+	}
+	var out map[string]any
+	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/exec", body, &out); err != nil {
+		return err
+	}
+	return print(out)
+}
+
+func cmdShare(args []string) error {
+	id, rest, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("share", flag.ExitOnError)
+	control := fs.Bool("control", false, "let whoever opens it use the screen, not only watch")
+	life := fs.String("for", "", "1h, 24h or 7d (default 24h)")
+	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
+	_ = fs.Parse(rest)
+	body := map[string]any{"mode": "view"}
+	if *control {
+		body["mode"] = "control"
+	}
+	if *life != "" {
+		body["for"] = *life
+	}
+	if *desktop >= 0 {
+		body["desktop"] = *desktop
+	}
+	var out map[string]any
+	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/shares", body, &out); err != nil {
+		return err
+	}
+	// The link is shown only now.
+	return print(out)
+}
+
+func cmdShares(args []string) error {
+	id, _, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	var out map[string]any
+	if err := call("GET", "/v1/workloads/"+url.PathEscape(id)+"/shares", nil, &out); err != nil {
+		return err
+	}
+	return print(out)
+}
+
+func cmdUnshare(args []string) error {
+	id, rest, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	share, _, err := needArg(rest, "link")
+	if err != nil {
+		return fmt.Errorf("which link? livellm shares %s lists them", id)
+	}
+	path := fmt.Sprintf("/v1/workloads/%s/shares/%s", url.PathEscape(id), url.PathEscape(share))
+	if err := call("DELETE", path, nil, nil); err != nil {
+		return err
+	}
+	return print(map[string]any{"closed": share})
+}
+
+func cmdRelease(args []string) error {
+	id, _, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	var out map[string]any
+	if err := call("DELETE", "/v1/workloads/"+url.PathEscape(id)+"/reservation", nil, &out); err != nil {
+		return err
 	}
 	return print(out)
 }

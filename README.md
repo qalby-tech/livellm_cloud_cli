@@ -10,6 +10,8 @@ livellm login          # opens a link; press Allow in the console
 livellm ls             # what you have
 livellm logs web       # why something isn't working
 livellm connect shop   # how to reach it
+livellm exec box "uname -a"   # run a command on a Linux machine
+livellm share desk-1   # a link to watch a screen (--control to use it)
 ```
 
 `login` asks for full access by default: you are the person who owns the

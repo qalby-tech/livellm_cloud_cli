@@ -3,6 +3,18 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.1.5
+
+- `exec ID "command"`: run a command on a Linux machine or a Desktop App's
+  desktop and get its output and exit code (`--session`, `--timeout`,
+  `--desktop`).
+- `share ID [--control] [--for 1h|24h|7d]`: a link that opens a screen in any
+  browser, to watch or to use. `shares ID` lists the open ones, `unshare ID
+  LINK` closes one.
+- `release ID`: let go of a machine held for work on it.
+- `connect --desktop N` for Desktop Apps, and `--screen-width` / `--format`
+  for the computer tool's screenshots.
+
 ## 0.1.4
 
 - `go install github.com/qalby-tech/livellm_cloud_cli/cmd/livellm@latest`
