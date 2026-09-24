@@ -3,6 +3,18 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## Unreleased
+
+- `stop ID` and `start ID`: stop an app or a machine without deleting it
+  (its disks are kept and only they are billed), and start it again. The
+  resource is written back exactly as it was, with only its running state
+  changed.
+- `ls` labels raw ports: `tcp host:port` or `udp host:port`, next to HTTPS
+  addresses and `ssh host:port`.
+- `connect` gives an app's raw ports their `address` (`host:port`) and
+  `protocol`.
+- The README shows an app with raw TCP and UDP ports and volumes.
+
 ## 0.1.5
 
 - `exec ID "command"`: run a command on a Linux machine or a Desktop App's

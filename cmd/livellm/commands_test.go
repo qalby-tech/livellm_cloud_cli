@@ -78,3 +78,112 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		t.Error("exec without a command should be refused")
 	}
 }
+
+// stop and start write the resource back whole, with only "stopped" changed:
+// the settings the command knows nothing about go back as they came.
+func TestStopAndStart(t *testing.T) {
+	workloads := []map[string]any{
+		{"id": "web", "type": "pod", "pod": map[string]any{
+			"image":   "nginx",
+			"ports":   []any{map[string]any{"name": "game", "port": float64(25565), "tcp": true}},
+			"volumes": []any{map[string]any{"name": "data", "size": "10Gi", "mountPath": "/data"}},
+		}, "createdBy": map[string]any{"name": "a person"}},
+		{"id": "box", "type": "vm-ubuntu", "stopped": true, "vm": map[string]any{"cpus": float64(2)}},
+	}
+	var puts []struct {
+		path string
+		body map[string]any
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/workspace":
+			_ = json.NewEncoder(w).Encode(map[string]any{"name": "ws", "spec": map[string]any{"workloads": workloads}})
+		case r.Method == "PUT":
+			var b map[string]any
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &b)
+			puts = append(puts, struct {
+				path string
+				body map[string]any
+			}{r.URL.Path, b})
+			_, _ = w.Write([]byte(`{"status":"accepted"}`))
+		default:
+			w.WriteHeader(404)
+			_, _ = w.Write([]byte(`{"error":"no such route"}`))
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	stdout := os.Stdout
+	devnull, _ := os.Open(os.DevNull)
+	os.Stdout = devnull
+	defer func() { os.Stdout = stdout }()
+
+	if err := cmdStop([]string{"web"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(puts) != 1 || puts[0].path != "/v1/workloads/web" {
+		t.Fatalf("stop sent %v", puts)
+	}
+	want := map[string]any{}
+	b, _ := json.Marshal(workloads[0])
+	_ = json.Unmarshal(b, &want)
+	want["stopped"] = true
+	if !reflect.DeepEqual(puts[0].body, want) {
+		t.Errorf("stop wrote\n%v\nwant\n%v", puts[0].body, want)
+	}
+
+	if err := cmdStart([]string{"box"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(puts) != 2 || puts[1].path != "/v1/workloads/box" || puts[1].body["stopped"] != false || puts[1].body["vm"] == nil {
+		t.Errorf("start sent %v", puts[1:])
+	}
+
+	// already in that state: nothing is written
+	if err := cmdStop([]string{"box"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(puts) != 2 {
+		t.Errorf("stopping a stopped machine wrote %v", puts[2:])
+	}
+	if err := cmdStop([]string{"nope"}); err == nil {
+		t.Error("stopping something that isn't there should be refused")
+	}
+	if err := cmdStart(nil); err == nil {
+		t.Error("start without an id should be refused")
+	}
+}
+
+// connect gives an app's raw ports the host:port the status reports.
+func TestConnectRawAddresses(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/status" {
+			_, _ = w.Write([]byte(`{"workloads":[{"id":"mc","endpoints":[{"name":"game","tcp":true,"addr":"h:31000"},{"name":"voice","udp":true,"addr":"h:31001"}]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	out := map[string]any{"urls": []any{
+		map[string]any{"port": "game", "raw": true},
+		map[string]any{"port": "voice", "raw": true},
+		map[string]any{"port": "http", "url": "https://x"},
+	}}
+	fillRawAddresses("mc", out)
+	u := out["urls"].([]any)
+	if g := u[0].(map[string]any); g["address"] != "h:31000" || g["protocol"] != "tcp" {
+		t.Errorf("tcp port: %v", g)
+	}
+	if v := u[1].(map[string]any); v["address"] != "h:31001" || v["protocol"] != "udp" {
+		t.Errorf("udp port: %v", v)
+	}
+	if h := u[2].(map[string]any); h["address"] != nil {
+		t.Errorf("an HTTP port got an address: %v", h)
+	}
+}

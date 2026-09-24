@@ -148,6 +148,8 @@ func resources() ([]resource, error) {
 			Endpoints []struct {
 				URL  string `json:"url"`
 				Addr string `json:"addr"`
+				TCP  bool   `json:"tcp"`
+				UDP  bool   `json:"udp"`
 			} `json:"endpoints"`
 		} `json:"workloads"`
 	}
@@ -169,9 +171,14 @@ func resources() ([]resource, error) {
 			l := live.Workloads[i]
 			r.State, r.Ready, r.StopsAt = strings.ToLower(l.Phase), l.Ready, l.ExpiresAt
 			for _, e := range l.Endpoints {
-				if e.URL != "" {
+				switch {
+				case e.URL != "":
 					r.Endpoints = append(r.Endpoints, e.URL)
-				} else if e.Addr != "" {
+				case e.Addr != "" && e.UDP:
+					r.Endpoints = append(r.Endpoints, "udp "+e.Addr)
+				case e.Addr != "" && e.TCP:
+					r.Endpoints = append(r.Endpoints, "tcp "+e.Addr)
+				case e.Addr != "":
 					r.Endpoints = append(r.Endpoints, e.Addr)
 				}
 			}
@@ -289,7 +296,52 @@ func cmdConnect(args []string) error {
 			}
 		}
 	}
+	fillRawAddresses(id, out)
 	return print(out)
+}
+
+// fillRawAddresses gives an app's raw TCP/UDP ports their host:port, which
+// lives in the status like a machine's SSH address.
+func fillRawAddresses(id string, out map[string]any) {
+	urls, _ := out["urls"].([]any)
+	var raw []map[string]any
+	for _, u := range urls {
+		if m, ok := u.(map[string]any); ok && m["raw"] == true && m["address"] == nil {
+			raw = append(raw, m)
+		}
+	}
+	if len(raw) == 0 {
+		return
+	}
+	var live struct {
+		Workloads []struct {
+			ID        string `json:"id"`
+			Endpoints []struct {
+				Name string `json:"name"`
+				Addr string `json:"addr"`
+				UDP  bool   `json:"udp"`
+			} `json:"endpoints"`
+		} `json:"workloads"`
+	}
+	if call("GET", "/v1/status", nil, &live) != nil {
+		return
+	}
+	for _, w := range live.Workloads {
+		if w.ID != id {
+			continue
+		}
+		for _, m := range raw {
+			for _, e := range w.Endpoints {
+				if e.Name == m["port"] && e.Addr != "" {
+					m["address"] = e.Addr
+					m["protocol"] = "tcp"
+					if e.UDP {
+						m["protocol"] = "udp"
+					}
+				}
+			}
+		}
+	}
 }
 
 func cmdExec(args []string) error {
@@ -475,6 +527,55 @@ func cmdRestart(args []string) error {
 		return err
 	}
 	return print(map[string]any{"restarting": id})
+}
+
+func cmdStop(args []string) error  { return setStopped(args, true) }
+func cmdStart(args []string) error { return setStopped(args, false) }
+
+// setStopped stops or starts a resource the way the console does: it reads
+// the resource as the workspace holds it, changes only "stopped" and writes
+// the whole of it back. Everything else — including the settings this command
+// knows nothing about — goes back as it came; passwords and other write-only
+// values are never read, and the platform keeps the ones it has.
+func setStopped(args []string, stop bool) error {
+	id, _, err := needArg(args, "resource")
+	if err != nil {
+		return err
+	}
+	var ws struct {
+		Spec struct {
+			Workloads []map[string]any `json:"workloads"`
+		} `json:"spec"`
+	}
+	if err := call("GET", "/v1/workspace", nil, &ws); err != nil {
+		return err
+	}
+	var w map[string]any
+	for _, x := range ws.Spec.Workloads {
+		if x["id"] == id {
+			w = x
+			break
+		}
+	}
+	if w == nil {
+		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
+	}
+	verb := "starting"
+	if stop {
+		verb = "stopping"
+	}
+	if was, _ := w["stopped"].(bool); was == stop {
+		state := "running"
+		if stop {
+			state = "stopped"
+		}
+		return print(map[string]any{"id": id, "already": state})
+	}
+	w["stopped"] = stop
+	if err := call("PUT", "/v1/workloads/"+url.PathEscape(id), w, nil); err != nil {
+		return err
+	}
+	return print(map[string]any{verb: id})
 }
 
 func cmdBuild(args []string) error {

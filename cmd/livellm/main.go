@@ -34,6 +34,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm create TYPE -f FILE                create a resource from a JSON file
   livellm rm ID                              delete one (asks first)
   livellm restart ID                         restart one
+  livellm stop ID                            stop one; its disks are kept
+  livellm start ID                           start a stopped one again
   livellm build ID                           build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
@@ -85,6 +87,10 @@ func main() {
 		err = cmdRemove(args)
 	case "restart":
 		err = cmdRestart(args)
+	case "stop":
+		err = cmdStop(args)
+	case "start":
+		err = cmdStart(args)
 	case "build":
 		err = cmdBuild(args)
 	case "builds":
