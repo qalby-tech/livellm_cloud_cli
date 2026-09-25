@@ -89,6 +89,8 @@ func TestStopAndStart(t *testing.T) {
 			"volumes": []any{map[string]any{"name": "data", "size": "10Gi", "mountPath": "/data"}},
 		}, "createdBy": map[string]any{"name": "a person"}},
 		{"id": "box", "type": "vm-ubuntu", "stopped": true, "vm": map[string]any{"cpus": float64(2)}},
+		{"id": "db", "type": "storage", "storage": map[string]any{"engine": "postgres"}},
+		{"id": "chrome", "type": "browser", "browser": map[string]any{}},
 	}
 	var puts []struct {
 		path string
@@ -154,6 +156,18 @@ func TestStopAndStart(t *testing.T) {
 	}
 	if err := cmdStart(nil); err == nil {
 		t.Error("start without an id should be refused")
+	}
+	// a database or a browser can't be stopped: refused, nothing written
+	for _, id := range []string{"db", "chrome"} {
+		if err := cmdStop([]string{id}); err == nil {
+			t.Errorf("stopping %s should be refused", id)
+		}
+		if err := cmdStart([]string{id}); err == nil {
+			t.Errorf("starting %s should be refused", id)
+		}
+	}
+	if len(puts) != 2 {
+		t.Errorf("refused stops wrote %v", puts[2:])
 	}
 }
 

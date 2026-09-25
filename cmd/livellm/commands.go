@@ -529,7 +529,15 @@ func cmdRestart(args []string) error {
 	return print(map[string]any{"restarting": id})
 }
 
-func cmdStop(args []string) error  { return setStopped(args, true) }
+func cmdStop(args []string) error { return setStopped(args, true) }
+
+// stoppable are the resource types that honour "stopped": machines, desktops
+// and apps. A browser or a database keeps running whatever the flag says, so
+// stop refuses them rather than report a stop that never happens.
+var stoppable = map[string]bool{
+	"vm-ubuntu": true, "vm-ubuntu-desktop": true, "vm-windows": true, "desktop": true, "pod": true,
+}
+
 func cmdStart(args []string) error { return setStopped(args, false) }
 
 // setStopped stops or starts a resource the way the console does: it reads
@@ -559,6 +567,9 @@ func setStopped(args []string, stop bool) error {
 	}
 	if w == nil {
 		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
+	}
+	if t, _ := w["type"].(string); !stoppable[t] {
+		return fmt.Errorf("%q can't be stopped or started: only machines and apps can; livellm rm %s deletes it", id, id)
 	}
 	verb := "starting"
 	if stop {

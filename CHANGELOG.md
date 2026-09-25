@@ -8,7 +8,8 @@ platform and attaches them to the GitHub release.
 - `stop ID` and `start ID`: stop an app or a machine without deleting it
   (its disks are kept and only they are billed), and start it again. The
   resource is written back exactly as it was, with only its running state
-  changed.
+  changed. A browser or a database can't be stopped; the command says so
+  instead of writing anything.
 - `ls` labels raw ports: `tcp host:port` or `udp host:port`, next to HTTPS
   addresses and `ssh host:port`.
 - `connect` gives an app's raw ports their `address` (`host:port`) and
