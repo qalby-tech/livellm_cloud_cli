@@ -5,6 +5,35 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `build ID --wait`: waits until the build it started is live and exits 0, or
+  exits non-zero with the end of the build's log when it fails (`--timeout`,
+  30 minutes by default). An earlier build's answer is never taken for it.
+- `templates`, `template save NAME --from ID` (a resource's settings, without
+  its logins, env values or pull credential, as the console saves them) or
+  `--kind TYPE -f FILE`, `template show T`, `template rm T`, and
+  `create --template T --id NEW [-f FILE]`: a resource from a saved template,
+  with the file adding what is its own (a login, env values). A template is
+  named by its id or its name.
+- `activity [--actor you|platform|all] [--object ID] [--limit N] [--before
+  EVENT]`: what happened in the workspace, newest first.
+- `monitoring`: every resource up or down, its uptime and use, and the
+  alerts. `monitoring ID [--range 15m|1h|6h|24h|7d]`: one machine in detail.
+- `rdp ID [--ttl 8h] [-o FILE]`: a Windows or Ubuntu desktop machine's Remote
+  Desktop file, saved as `ID.rdp`.
+- `screenshot ID [--desktop N] [--width PX] [-o FILE]`: a picture of a
+  machine's, a browser's or a desktop's screen (JPEG).
+- `api-keys` (`ls`, `create NAME`, `set ID --permissions billing|none`,
+  `rm ID`): the workspace's API keys. A new key's secret is printed once.
+  Permissions are given by a person in the console; the API says so when a
+  key or a sign-in asks.
+- `keys set -f FILE`: replace the workspace's SSH keys, from a JSON list or a
+  file of public key lines. It takes an API key; an agent's sign-in is
+  refused.
+- `plan`, `plan catalog`, `plan set PLAN` and `plan metered on|off`: the plan,
+  what the workspace uses of it, and changing it (an API key needs the
+  billing permission).
+- `reservations`: the machines agents are holding.
+
 - `backups ID`, `backup ID` and `restore ID BACKUP`: backups of machines and
   databases. `backup` takes one now (a machine's is live; `--clean` takes it
   with the machine stopped, `--name` names it). A database restores into a new

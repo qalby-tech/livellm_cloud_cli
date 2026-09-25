@@ -30,14 +30,21 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm unshare ID LINK                    close a screen link now
   livellm release ID                         let go of a machine held for work on it
   livellm keys                               the workspace's SSH keys
+  livellm keys set -f FILE                   replace them (with an API key; a sign-in can't)
+  livellm rdp ID [--ttl 8h] [-o FILE]        a Windows or Ubuntu desktop machine's Remote Desktop file
+  livellm screenshot ID [--desktop N] [-o FILE]
+                                             a picture of its screen (JPEG)
+  livellm reservations                       machines agents are holding
 
   livellm create TYPE -f FILE                create a resource from a JSON file
+  livellm create --template T --id NEW [-f FILE]
+                                             create one from a saved template
   livellm rm ID                              delete one (asks first)
   livellm restart ID                         restart one
   livellm stop ID                            stop one; its disks are kept
   livellm start ID                           start a stopped one again
   livellm set ID -f FILE                     change some settings (only what the file holds)
-  livellm build ID                           build an app from its repository
+  livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
 
@@ -47,6 +54,23 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm restore ID BACKUP                  a machine: put its disk back (stop it first)
   livellm restore ID BACKUP --as NEW [--at TIME] [--password-env VAR]
                                              a database: restore into a new database
+
+  livellm templates                          saved templates
+  livellm template save NAME --from ID       save a resource's settings (never its logins)
+  livellm template save NAME --kind TYPE -f FILE
+  livellm template show T | template rm T
+
+  livellm activity [--actor you|platform] [--object ID] [--limit N] [--before EVENT]
+                                             what happened, newest first
+  livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
+  livellm plan                               the plan, and what the workspace uses of it
+  livellm plan catalog | plan set PLAN | plan metered on|off
+                                             change it (a key needs the billing permission)
+  livellm api-keys [ls]                      the workspace's API keys
+  livellm api-keys create NAME               a new key; its secret is shown once
+  livellm api-keys set ID --permissions billing|none
+  livellm api-keys rm ID                     revoke one
+                                             (permissions are given by a person, in the console)
 
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
@@ -96,6 +120,24 @@ func main() {
 		err = cmdRelease(args)
 	case "keys", "ssh-keys":
 		err = cmdKeys(args)
+	case "rdp":
+		err = cmdRDP(args)
+	case "screenshot":
+		err = cmdScreenshot(args)
+	case "reservations":
+		err = cmdReservations(args)
+	case "templates":
+		err = cmdTemplates(args)
+	case "template":
+		err = cmdTemplate(args)
+	case "activity":
+		err = cmdActivity(args)
+	case "monitoring", "monitor":
+		err = cmdMonitoring(args)
+	case "plan", "billing":
+		err = cmdPlan(args)
+	case "api-keys", "api-key":
+		err = cmdAPIKeys(args)
 	case "create":
 		err = cmdCreate(args)
 	case "rm", "delete":

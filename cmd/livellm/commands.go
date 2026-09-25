@@ -444,18 +444,13 @@ func cmdRelease(args []string) error {
 	return print(out)
 }
 
-func cmdKeys([]string) error {
-	var out map[string]any
-	if err := call("GET", "/v1/ssh-keys", nil, &out); err != nil {
-		return err
-	}
-	return print(out)
-}
-
 func cmdCreate(args []string) error {
+	if len(args) > 0 && strings.HasPrefix(args[0], "--template") {
+		return createFromTemplate(args)
+	}
 	kind, rest, err := needArg(args, "kind of resource")
 	if err != nil {
-		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage, browser, browser-api — or apps, several at once")
+		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage, browser, desktop, browser-api — or apps, several at once; or --template T --id NEW")
 	}
 	if kind == "browser-api" {
 		kind = browserAPIType
@@ -502,6 +497,37 @@ func cmdCreate(args []string) error {
 		return err
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
+}
+
+// createFromTemplate makes a resource from a saved template: its settings, a
+// new id, and a file with what is this resource's own (a login, env values).
+func createFromTemplate(args []string) error {
+	fs := flag.NewFlagSet("create", flag.ExitOnError)
+	ref := fs.String("template", "", "a saved template's id or name")
+	id := fs.String("id", "", "the new resource's id")
+	file := fs.String("f", "", "a JSON file with settings to add or change, such as a machine's credentials")
+	_ = fs.Parse(args)
+	if *ref == "" || *id == "" {
+		return fmt.Errorf("pass --template T and --id NEW")
+	}
+	extra := map[string]any{}
+	if *file != "" {
+		raw, err := os.ReadFile(*file)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &extra); err != nil {
+			return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
+		}
+	}
+	kind, body, err := fromTemplate(*ref, *id, extra)
+	if err != nil {
+		return err
+	}
+	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
+		return err
+	}
+	return print(map[string]any{"created": *id, "type": kind, "template": *ref})
 }
 
 func cmdRemove(args []string) error {
@@ -622,10 +648,14 @@ func cmdSet(args []string) error {
 }
 
 func cmdBuild(args []string) error {
-	id, _, err := needArg(args, "app")
+	id, rest, err := needArg(args, "app")
 	if err != nil {
 		return err
 	}
+	fs := flag.NewFlagSet("build", flag.ExitOnError)
+	wait := fs.Bool("wait", false, "wait until the new build is live, or has failed")
+	timeout := fs.Duration("timeout", 30*time.Minute, "with --wait: give up after this long")
+	_ = fs.Parse(rest)
 	var out map[string]any
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/build", map[string]any{}, &out); err != nil {
 		return err
@@ -633,7 +663,67 @@ func cmdBuild(args []string) error {
 	if out == nil {
 		out = map[string]any{"building": id}
 	}
-	return print(out)
+	if !*wait {
+		return print(out)
+	}
+	started, _ := out["buildId"].(string)
+	return waitBuild(id, started, *timeout, buildPoll)
+}
+
+// buildPoll is how often build --wait asks; tests shorten it.
+var buildPoll = 10 * time.Second
+
+// buildProgress is where an app's newest build stands.
+type buildProgress struct {
+	Stage   string `json:"stage"`
+	Message string `json:"message"`
+	Done    bool   `json:"done"`
+	Failed  bool   `json:"failed"`
+	BuildID string `json:"buildId"`
+	Commit  string `json:"commit"`
+	Logs    []struct {
+		Body string `json:"body"`
+	} `json:"logs"`
+}
+
+// waitBuild follows the newest build until it is live or has failed. When
+// the build's id is known, an older build's answer is never taken for it.
+func waitBuild(id, buildID string, timeout, every time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	last := ""
+	for {
+		var p buildProgress
+		if err := call("GET", "/v1/workloads/"+url.PathEscape(id)+"/build-progress", nil, &p); err != nil {
+			return err
+		}
+		ours := buildID == "" || p.BuildID == "" || p.BuildID == buildID
+		if ours && p.Failed {
+			tail := make([]string, 0, len(p.Logs))
+			for _, l := range p.Logs {
+				tail = append(tail, l.Body)
+			}
+			if len(tail) > 20 {
+				tail = tail[len(tail)-20:]
+			}
+			fmt.Fprintln(os.Stderr, strings.Join(tail, "\n"))
+			return &problem{Status: 422, Msg: "the build failed: " + p.Message, Next: "livellm builds " + id + " has its logs"}
+		}
+		if ours && p.Done {
+			return print(map[string]any{"id": id, "live": true, "buildId": p.BuildID, "commit": p.Commit})
+		}
+		if ours && p.Stage == "none" {
+			return fmt.Errorf("%s isn't built from a repository", id)
+		}
+		if line := p.Stage + ": " + p.Message; line != last {
+			fmt.Fprintln(os.Stderr, line)
+			last = line
+		}
+		if time.Now().After(deadline) {
+			return &problem{Status: 409, Msg: fmt.Sprintf("the build isn't live after %s (%s)", timeout, p.Stage),
+				Next: "livellm builds " + id + " shows where it is"}
+		}
+		time.Sleep(every)
+	}
 }
 
 func cmdBuilds(args []string) error {

@@ -46,23 +46,40 @@ func asProblem(err error, out **problem) bool { return errors.As(err, out) }
 
 var client = &http.Client{Timeout: 60 * time.Second}
 
-// call makes one request with whatever credential is to hand.
+// call makes one request with whatever credential is to hand, and decodes
+// a JSON answer into out.
 func call(method, path string, body any, out any) error {
-	tok, kind, err := credential()
+	raw, _, err := send(method, path, body)
 	if err != nil {
 		return err
+	}
+	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("LiveLLM answered something unexpected: %w", err)
+	}
+	return nil
+}
+
+// send makes one request and hands back the answer as it came: a file (a
+// screen's picture, a Remote Desktop file) is not JSON.
+func send(method, path string, body any) ([]byte, http.Header, error) {
+	tok, kind, err := credential()
+	if err != nil {
+		return nil, nil, err
 	}
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		rdr = bytes.NewReader(b)
 	}
 	req, err := http.NewRequest(method, apiBase()+path, rdr)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if kind == "key" {
@@ -72,7 +89,7 @@ func call(method, path string, body any, out any) error {
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("couldn't reach LiveLLM: %w", err)
+		return nil, nil, fmt.Errorf("couldn't reach LiveLLM: %w", err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 32<<20))
@@ -88,15 +105,9 @@ func call(method, path string, body any, out any) error {
 		if res.StatusCode == 401 && kind == "signin" {
 			p.Next = "run: livellm login"
 		}
-		return p
+		return nil, nil, p
 	}
-	if out == nil {
-		return nil
-	}
-	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("LiveLLM answered something unexpected: %w", err)
-	}
-	return nil
+	return raw, res.Header, nil
 }
 
 // credential is the API key if one is set, otherwise the saved sign-in,

@@ -77,6 +77,24 @@ The restored database keeps the original's login name and gets a new
 password: from the variable named by `--password-env`, or made up and shown
 once.
 
+For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
+
+```sh
+livellm build web --wait                        # exits 0 once the new build is live, non-zero if it failed
+livellm template save small-box --from box      # a resource's settings, never its logins
+livellm create --template small-box --id box2 -f login.json
+livellm activity --object web --limit 20        # what happened to web, newest first
+livellm monitoring                              # up or down, uptime, use, open alerts
+livellm rdp win-lab -o win-lab.rdp              # a Windows machine's Remote Desktop file
+livellm screenshot win-lab -o now.jpg           # a picture of its screen
+livellm keys set -f ~/.ssh/id_ed25519.pub       # the workspace's SSH keys, replaced
+livellm api-keys create ci                      # a new key; its secret is shown once
+livellm plan                                    # the plan and what the workspace uses of it
+```
+
+An API key changes the plan (`plan set`, `plan metered on|off`) only when a
+person gave it the billing permission on the console's Keys page.
+
 `login` asks for full access by default: you are the person who owns the
 workspace. `--access use` or `--access create` narrows it, and the console
 shows what is being asked for before you press Allow.
