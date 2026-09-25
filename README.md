@@ -66,12 +66,16 @@ settings the file holds.
 Backups work the same way for machines and databases:
 
 ```sh
-livellm backups db                              # what's kept, newest first
+livellm backups db                              # how it's backed up, and what's kept
 livellm backup db                               # one now
 livellm restore db BACKUP --as db-copy          # into a NEW database; db keeps running
 livellm restore db BACKUP --as db-copy --at 2026-09-25T14:05:00Z   # continuous backups: to the minute
 livellm restore box BACKUP                      # a machine goes back in place (stop it first)
 ```
+
+The restored database keeps the original's login name and gets a new
+password: from the variable named by `--password-env`, or made up and shown
+once.
 
 `login` asks for full access by default: you are the person who owns the
 workspace. `--access use` or `--access create` narrows it, and the console

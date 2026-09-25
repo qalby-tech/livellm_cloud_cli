@@ -45,7 +45,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm backup ID                          back up now
           [--clean] [--name N]               (a machine: stopped first; its name)
   livellm restore ID BACKUP                  a machine: put its disk back (stop it first)
-  livellm restore ID BACKUP --as NEW [--at TIME]
+  livellm restore ID BACKUP --as NEW [--at TIME] [--password-env VAR]
                                              a database: restore into a new database
 
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]

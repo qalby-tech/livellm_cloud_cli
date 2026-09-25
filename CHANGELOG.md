@@ -9,7 +9,9 @@ platform and attaches them to the GitHub release.
   databases. `backup` takes one now (a machine's is live; `--clean` takes it
   with the machine stopped, `--name` names it). A database restores into a new
   database, `--as NEW`, and keeps running as it is; with continuous backups,
-  `--at TIME` restores to that minute. A machine is put back in place and has
+  `--at TIME` restores to that minute. The new database keeps the login name
+  and takes a new password from the variable named by `--password-env`, or
+  one is made up and shown once. A machine is put back in place and has
   to be stopped first; the command asks before it does that (`-y` doesn't).
   Restore refuses a database without `--as`, and `--as` or `--at` for a
   machine, before sending anything.

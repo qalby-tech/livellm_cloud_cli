@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
+	"math/big"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -85,17 +88,29 @@ func cmdBackup(args []string) error {
 	return print(out)
 }
 
-// restoreBody is what a restore sends. A database needs the new database's
-// id, and a time when it restores to a minute rather than to the backup.
-func restoreBody(as, at string) map[string]any {
-	body := map[string]any{}
-	if as != "" {
-		body["id"] = as
-	}
+// restoreBody is what a database's restore sends: the new database's id and
+// password, and a moment when it restores to a minute rather than to the
+// end of the backup.
+func restoreBody(as, at, password string) map[string]any {
+	body := map[string]any{"id": as, "credentials": map[string]any{"password": password}}
 	if at != "" {
-		body["at"] = at
+		body["pointInTime"] = at
 	}
 	return body
+}
+
+// newPassword is a strong password for a restored database, shown once.
+func newPassword() (string, error) {
+	const letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 24)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = letters[n.Int64()]
+	}
+	return string(b), nil
 }
 
 func cmdRestore(args []string) error {
@@ -110,6 +125,7 @@ func cmdRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	as := fs.String("as", "", "a database: the id of the new database to restore into")
 	at := fs.String("at", "", "a database with continuous backups: the moment to restore to (RFC 3339, e.g. 2026-09-25T14:05:00Z)")
+	passwordEnv := fs.String("password-env", "", "a database: the environment variable holding the new database's password (one is made up and shown once if left out)")
 	yes := fs.Bool("y", false, "don't ask")
 	_ = fs.Parse(rest)
 	if *at != "" {
@@ -127,8 +143,8 @@ func cmdRestore(args []string) error {
 			return fmt.Errorf("a database restores into a new one: pass --as NEW-ID (%s keeps running as it is)", id)
 		}
 	case isMachine(t):
-		if *as != "" || *at != "" {
-			return fmt.Errorf("a machine restores in place: drop --as and --at")
+		if *as != "" || *at != "" || *passwordEnv != "" {
+			return fmt.Errorf("a machine restores in place: drop --as, --at and --password-env")
 		}
 		if !*yes && !confirm(fmt.Sprintf("Put %s's disk back to backup %s? What was written since is lost.", id, backup)) {
 			return fmt.Errorf("nothing was restored")
@@ -138,15 +154,39 @@ func cmdRestore(args []string) error {
 	}
 	path := backupsPath(id) + "/" + url.PathEscape(backup) + "/restore"
 	var out map[string]any
-	if err := call("POST", path, restoreBody(*as, *at), &out); err != nil {
-		return err
-	}
-	if len(out) == 0 {
-		if *as != "" {
-			out = map[string]any{"restoring": backup, "into": *as}
-		} else {
+	if isMachine(t) {
+		if err := call("POST", path, nil, &out); err != nil {
+			return err
+		}
+		if len(out) == 0 {
 			out = map[string]any{"restoring": backup, "to": id}
 		}
+		return print(out)
+	}
+	password, made := "", false
+	if *passwordEnv != "" {
+		password = os.Getenv(*passwordEnv)
+		if password == "" {
+			return fmt.Errorf("%s is empty: put the new database's password in it", *passwordEnv)
+		}
+	} else {
+		if password, err = newPassword(); err != nil {
+			return err
+		}
+		made = true
+	}
+	if err := call("POST", path, restoreBody(*as, *at, password), &out); err != nil {
+		return err
+	}
+	if out == nil {
+		out = map[string]any{}
+	}
+	if len(out) == 0 {
+		out = map[string]any{"id": *as, "from": id, "backup": backup}
+	}
+	if made {
+		out["password"] = password
+		out["note"] = "the new database's password, shown this once"
 	}
 	return print(out)
 }
