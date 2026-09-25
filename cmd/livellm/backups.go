@@ -45,6 +45,9 @@ func workloadType(id string) (string, error) {
 func isMachine(t string) bool { return strings.HasPrefix(t, "vm-") }
 
 func cmdBackups(args []string) error {
+	if len(args) > 0 && (args[0] == "rm" || args[0] == "describe") {
+		return backupChange(args[0], args[1:])
+	}
 	id, _, err := needArg(args, "machine or database")
 	if err != nil {
 		return err
@@ -54,6 +57,41 @@ func cmdBackups(args []string) error {
 		return err
 	}
 	return print(out)
+}
+
+// backupChange deletes a machine's backup, or sets its description. A
+// database's backups are named by when they were taken and leave the store
+// on their own after its keep days; the API says so.
+func backupChange(verb string, args []string) error {
+	id, rest, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	backup, rest, err := needArg(rest, "backup")
+	if err != nil {
+		return fmt.Errorf("which backup? livellm backups %s lists them", id)
+	}
+	path := backupsPath(id) + "/" + url.PathEscape(backup)
+	if verb == "describe" {
+		if len(rest) == 0 {
+			return fmt.Errorf("describe it how? livellm backups describe %s %s \"before the upgrade\"", id, backup)
+		}
+		var out map[string]any
+		if err := call("PATCH", path, map[string]any{"description": rest[0]}, &out); err != nil {
+			return err
+		}
+		return print(map[string]any{"described": backup, "of": id})
+	}
+	fs := flag.NewFlagSet("backups rm", flag.ExitOnError)
+	yes := fs.Bool("y", false, "don't ask")
+	_ = fs.Parse(rest)
+	if !*yes && !confirm(fmt.Sprintf("Delete the backup %s of %s? This can't be undone.", backup, id)) {
+		return fmt.Errorf("nothing was deleted")
+	}
+	if err := call("DELETE", path, nil, nil); err != nil {
+		return err
+	}
+	return print(map[string]any{"deleted": backup, "of": id})
 }
 
 // cmdBackup takes a backup now. A machine's is live unless --clean asks for

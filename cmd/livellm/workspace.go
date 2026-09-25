@@ -571,3 +571,128 @@ func cmdScreenshot(args []string) error {
 	}
 	return saveFile(raw, *out, id+".jpg")
 }
+
+// --- waiting, and a closer look ---------------------------------------------------
+
+// waitPoll is how often wait asks; tests shorten it.
+var waitPoll = 5 * time.Second
+
+// cmdWait waits until a resource is ready, for a script that goes on to use
+// it. A resource that fails, or doesn't come up in time, is an error.
+func cmdWait(args []string) error {
+	id, rest, err := needArg(args, "resource")
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("wait", flag.ExitOnError)
+	timeout := fs.Duration("timeout", 15*time.Minute, "give up after this long (a Windows machine takes up to 35 minutes)")
+	_ = fs.Parse(rest)
+	deadline := time.Now().Add(*timeout)
+	last := ""
+	for {
+		var live struct {
+			Workloads []struct {
+				ID      string `json:"id"`
+				Phase   string `json:"phase"`
+				Ready   bool   `json:"ready"`
+				Message string `json:"message"`
+			} `json:"workloads"`
+		}
+		if err := call("GET", "/v1/status", nil, &live); err != nil {
+			return err
+		}
+		found := false
+		for _, w := range live.Workloads {
+			if w.ID != id {
+				continue
+			}
+			found = true
+			if w.Ready {
+				return print(map[string]any{"id": id, "ready": true, "state": strings.ToLower(w.Phase)})
+			}
+			if w.Phase == "Failed" {
+				return &problem{Status: 422, Msg: fmt.Sprintf("%s failed: %s", id, w.Message), Next: "livellm logs " + id}
+			}
+			if line := strings.TrimSpace(w.Phase + " " + w.Message); line != last && line != "" {
+				fmt.Fprintln(os.Stderr, line)
+				last = line
+			}
+		}
+		if !found {
+			if _, err := findWorkload(id); err != nil {
+				return err
+			}
+		}
+		if time.Now().After(deadline) {
+			return &problem{Status: 409, Msg: fmt.Sprintf("%s isn't ready after %s (%s)", id, *timeout, last), Next: "livellm status " + id}
+		}
+		time.Sleep(waitPoll)
+	}
+}
+
+// cmdDatabase is a database's instances as they are now: role, ready, use and disk.
+func cmdDatabase(args []string) error {
+	id, _, err := needArg(args, "database")
+	if err != nil {
+		return err
+	}
+	var out map[string]any
+	if err := call("GET", "/v1/workloads/"+url.PathEscape(id)+"/database", nil, &out); err != nil {
+		return err
+	}
+	return print(out)
+}
+
+// cmdInstall is where a new machine stands on its way to its first boot.
+func cmdInstall(args []string) error {
+	id, _, err := needArg(args, "machine")
+	if err != nil {
+		return err
+	}
+	var out map[string]any
+	if err := call("GET", "/v1/workloads/"+url.PathEscape(id)+"/install-progress", nil, &out); err != nil {
+		return err
+	}
+	return print(out)
+}
+
+// cmdAgents lists the agents signed in to the workspace; rm signs one out.
+func cmdAgents(args []string) error {
+	if len(args) == 0 || args[0] == "ls" || args[0] == "list" {
+		var out map[string]any
+		if err := call("GET", "/v1/agents", nil, &out); err != nil {
+			return err
+		}
+		return print(out)
+	}
+	if args[0] != "rm" && args[0] != "sign-out" {
+		return fmt.Errorf("agents %s? agents lists them; agents rm ID signs one out", args[0])
+	}
+	id, rest, err := needArg(args[1:], "agent")
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("agents rm", flag.ExitOnError)
+	yes := fs.Bool("y", false, "don't ask")
+	_ = fs.Parse(rest)
+	if !*yes && !confirm(fmt.Sprintf("Sign out the agent %s? It stops on its next step.", id)) {
+		return fmt.Errorf("nobody was signed out")
+	}
+	if err := call("DELETE", "/v1/agents/"+url.PathEscape(id), nil, nil); err != nil {
+		return err
+	}
+	return print(map[string]any{"signedOut": id})
+}
+
+// cmdInvoices lists the monthly invoices, or shows one.
+func cmdInvoices(args []string) error {
+	path := "/v1/invoices"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		path += "/" + url.PathEscape(args[0])
+	}
+	var out map[string]any
+	if err := call("GET", path, nil, &out); err != nil {
+		return err
+	}
+	return print(out)
+}

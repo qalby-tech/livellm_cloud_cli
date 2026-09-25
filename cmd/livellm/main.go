@@ -19,6 +19,9 @@ const usage = `livellm — your machines, browsers, apps and databases.
 
   livellm ls [--type TYPE]                   everything, with its state
   livellm status [ID]                        how things are running right now
+  livellm wait ID [--timeout 15m]            until it is ready (exits non-zero if it isn't)
+  livellm install ID                         a new machine's way to its first boot
+  livellm database ID                        a database's instances, live
   livellm logs ID [--lines N]                recent logs, and restarts
   livellm connect ID [--tool TOOL]           how to reach it
           [--desktop N] [--screen-width PX] [--format png|jpeg]
@@ -54,6 +57,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm restore ID BACKUP                  a machine: put its disk back (stop it first)
   livellm restore ID BACKUP --as NEW [--at TIME] [--password-env VAR]
                                              a database: restore into a new database
+  livellm backups describe ID BACKUP TEXT    a machine's backup: note what it is
+  livellm backups rm ID BACKUP               a machine's backup: delete it (asks first)
 
   livellm templates                          saved templates
   livellm template save NAME --from ID       save a resource's settings (never its logins)
@@ -66,6 +71,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm plan                               the plan, and what the workspace uses of it
   livellm plan catalog | plan set PLAN | plan metered on|off
                                              change it (a key needs the billing permission)
+  livellm invoices [ID]                      monthly invoices, or one
+  livellm agents [ls] | agents rm ID         agents signed in; sign one out
   livellm api-keys [ls]                      the workspace's API keys
   livellm api-keys create NAME               a new key; its secret is shown once
   livellm api-keys set ID --permissions billing|none
@@ -126,6 +133,16 @@ func main() {
 		err = cmdScreenshot(args)
 	case "reservations":
 		err = cmdReservations(args)
+	case "wait":
+		err = cmdWait(args)
+	case "database", "db":
+		err = cmdDatabase(args)
+	case "install":
+		err = cmdInstall(args)
+	case "agents":
+		err = cmdAgents(args)
+	case "invoices", "invoice":
+		err = cmdInvoices(args)
 	case "templates":
 		err = cmdTemplates(args)
 	case "template":

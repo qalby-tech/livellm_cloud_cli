@@ -33,6 +33,17 @@ platform and attaches them to the GitHub release.
   what the workspace uses of it, and changing it (an API key needs the
   billing permission).
 - `reservations`: the machines agents are holding.
+- `wait ID [--timeout 15m]`: until the resource is ready; non-zero when it
+  failed or isn't ready in time, so a script can stop there.
+- `install ID`: where a new machine stands on its way to its first boot
+  (a Windows machine takes minutes).
+- `database ID`: a database's instances as they are now: role, ready, use and
+  disk.
+- `backups describe ID BACKUP TEXT` and `backups rm ID BACKUP`: note what a
+  machine's backup is, or delete it (asks first; `-y` doesn't).
+- `invoices [ID]`: the monthly invoices, or one.
+- `agents` and `agents rm ID`: the agents signed in to the workspace, and
+  signing one out.
 
 - `backups ID`, `backup ID` and `restore ID BACKUP`: backups of machines and
   databases. `backup` takes one now (a machine's is live; `--clean` takes it

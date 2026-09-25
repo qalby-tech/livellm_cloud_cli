@@ -111,6 +111,16 @@ func TestWorkspaceRequests(t *testing.T) {
 		{"plan metered", func() error { return cmdPlan([]string{"metered", "on"}) },
 			got{"PUT", "/v1/billing-mode", obj(`{"metered":true}`)}},
 		{"reservations", func() error { return cmdReservations(nil) }, got{"GET", "/v1/reservations", nil}},
+		{"database", func() error { return cmdDatabase([]string{"db"}) }, got{"GET", "/v1/workloads/db/database", nil}},
+		{"install", func() error { return cmdInstall([]string{"win"}) }, got{"GET", "/v1/workloads/win/install-progress", nil}},
+		{"agents", func() error { return cmdAgents(nil) }, got{"GET", "/v1/agents", nil}},
+		{"agents rm", func() error { return cmdAgents([]string{"rm", "ag_1", "-y"}) }, got{"DELETE", "/v1/agents/ag_1", nil}},
+		{"invoices", func() error { return cmdInvoices(nil) }, got{"GET", "/v1/invoices", nil}},
+		{"one invoice", func() error { return cmdInvoices([]string{"2026-09"}) }, got{"GET", "/v1/invoices/2026-09", nil}},
+		{"backups rm", func() error { return cmdBackups([]string{"rm", "box", "snap-1", "-y"}) },
+			got{"DELETE", "/v1/workloads/box/backups/snap-1", nil}},
+		{"backups describe", func() error { return cmdBackups([]string{"describe", "box", "snap-1", "before the upgrade"}) },
+			got{"PATCH", "/v1/workloads/box/backups/snap-1", obj(`{"description":"before the upgrade"}`)}},
 		{"template save from a machine: no login", func() error {
 			return cmdTemplate([]string{"save", "small box", "--from", "box", "--description", "for tests"})
 		}, got{"POST", "/v1/templates", obj(`{"name":"small box","description":"for tests","kind":"vm-ubuntu","config":{"vm":{"cpus":2}}}`)}},
@@ -213,5 +223,38 @@ func TestBuildWait(t *testing.T) {
 	polls, fail = 1, false
 	if err := cmdBuild([]string{"web", "--wait", "--timeout", "1ns"}); err == nil {
 		t.Error("a build still running at the timeout should be an error")
+	}
+}
+
+// wait asks until the resource is ready, and says so when it failed or
+// never came up.
+func TestWait(t *testing.T) {
+	phase := "Pending"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		ready := phase == "Running"
+		_, _ = w.Write([]byte(`{"workloads":[{"id":"db","phase":"` + phase + `","ready":` + map[bool]string{true: "true", false: "false"}[ready] + `,"message":"m"}]}`))
+		if phase == "Pending" {
+			phase = "Running"
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	waitPoll = time.Millisecond
+	stdout, stderr := os.Stdout, os.Stderr
+	devnull, _ := os.Open(os.DevNull)
+	os.Stdout, os.Stderr = devnull, devnull
+	defer func() { os.Stdout, os.Stderr = stdout, stderr }()
+	if err := cmdWait([]string{"db"}); err != nil {
+		t.Fatalf("ready on the second look: %v", err)
+	}
+	phase = "Failed"
+	if err := cmdWait([]string{"db"}); err == nil {
+		t.Error("a failed resource should be an error")
+	}
+	phase = "Starting"
+	if err := cmdWait([]string{"db", "--timeout", "1ns"}); err == nil {
+		t.Error("not ready in time should be an error")
 	}
 }
