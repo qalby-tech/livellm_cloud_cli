@@ -78,17 +78,17 @@ func templateConfig(w map[string]any) (kind string, config map[string]any, err e
 	if block == "" {
 		return "", nil, fmt.Errorf("a %s can't be saved as a template", kind)
 	}
-	if kind == "controller" {
-		return "", nil, fmt.Errorf("a Browser API's browsers and remote logins belong to it alone, so it has no template")
-	}
 	spec, _ := w[block].(map[string]any)
 	clean := map[string]any{}
 	for k, v := range spec {
 		clean[k] = v
 	}
 	switch block {
-	case "vm", "storage":
+	case "vm":
 		delete(clean, "credentials")
+	case "storage":
+		delete(clean, "credentials")
+		delete(clean, "restoreFrom") // a restore is this database's own history
 	case "pod":
 		delete(clean, "env")
 		delete(clean, "secretEnv")
@@ -289,6 +289,9 @@ func cmdMonitoring(args []string) error {
 		id, args = args[0], args[1:]
 	}
 	_ = fs.Parse(args)
+	if id == "" {
+		id = fs.Arg(0) // the id may follow the flags
+	}
 	var out map[string]any
 	if id == "" {
 		if err := call("GET", "/v1/monitoring", nil, &out); err != nil {
@@ -612,6 +615,13 @@ func cmdWait(args []string) error {
 			}
 			if w.Phase == "Failed" {
 				return &problem{Status: 422, Msg: fmt.Sprintf("%s failed: %s", id, w.Message), Next: "livellm logs " + id}
+			}
+			// Stopped reads "not ready" for good, unless it was just started
+			// (then it reads Stopped for a moment until it comes up).
+			if w.Phase == "Stopped" {
+				if spec, err := findWorkload(id); err == nil && spec["stopped"] == true {
+					return &problem{Status: 409, Msg: id + " is stopped", Next: "livellm start " + id}
+				}
 			}
 			if line := strings.TrimSpace(w.Phase + " " + w.Message); line != last && line != "" {
 				fmt.Fprintln(os.Stderr, line)

@@ -13,11 +13,14 @@ platform and attaches them to the GitHub release.
   `--kind TYPE -f FILE`, `template show T`, `template rm T`, and
   `create --template T --id NEW [-f FILE]`: a resource from a saved template,
   with the file adding what is its own (a login, env values). A template is
-  named by its id or its name.
+  named by its id or its name. A Browser API saves as a template too, as the
+  console saves it; a database's template leaves out what it was restored
+  from.
 - `activity [--actor you|platform|all] [--object ID] [--limit N] [--before
   EVENT]`: what happened in the workspace, newest first.
 - `monitoring`: every resource up or down, its uptime and use, and the
-  alerts. `monitoring ID [--range 15m|1h|6h|24h|7d]`: one machine in detail.
+  alerts. `monitoring ID [--range 15m|1h|6h|24h|7d]`: one machine in detail
+  (the id may come before or after `--range`).
 - `rdp ID [--ttl 8h] [-o FILE]`: a Windows or Ubuntu desktop machine's Remote
   Desktop file, saved as `ID.rdp`.
 - `screenshot ID [--desktop N] [--width PX] [-o FILE]`: a picture of a
@@ -34,7 +37,9 @@ platform and attaches them to the GitHub release.
   billing permission).
 - `reservations`: the machines agents are holding.
 - `wait ID [--timeout 15m]`: until the resource is ready; non-zero when it
-  failed or isn't ready in time, so a script can stop there.
+  failed or isn't ready in time, so a script can stop there. A stopped
+  resource is said at once (`livellm start ID` first); one just started
+  is waited for.
 - `install ID`: where a new machine stands on its way to its first boot
   (a Windows machine takes minutes).
 - `database ID`: a database's instances as they are now: role, ready, use and

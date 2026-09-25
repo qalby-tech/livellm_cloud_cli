@@ -89,6 +89,10 @@ func TestWorkspaceRequests(t *testing.T) {
 		{"monitoring", func() error { return cmdMonitoring(nil) }, got{"GET", "/v1/monitoring", nil}},
 		{"one machine's monitor", func() error { return cmdMonitoring([]string{"box", "--range", "24h"}) },
 			got{"GET", "/v1/workloads/box/monitor?range=24h", nil}},
+		{"one machine's monitor, its id after the flag", func() error { return cmdMonitoring([]string{"--range", "6h", "box"}) },
+			got{"GET", "/v1/workloads/box/monitor?range=6h", nil}},
+		{"a Browser API as a template, as the console saves it", func() error { return cmdTemplate([]string{"save", "p", "--from", "pool"}) },
+			got{"POST", "/v1/templates", obj(`{"name":"p","kind":"controller","config":{"controller":{"browsers":["a"]}}}`)}},
 		{"api-keys", func() error { return cmdAPIKeys(nil) }, got{"GET", "/v1/keys", nil}},
 		{"api-keys create", func() error { return cmdAPIKeys([]string{"create", "ci"}) },
 			got{"POST", "/v1/keys", obj(`{"name":"ci"}`)}},
@@ -160,7 +164,6 @@ func TestWorkspaceRequests(t *testing.T) {
 
 	refused := map[string]func() error{
 		"a template named twice":         func() error { return cmdTemplate([]string{"show", "twin"}) },
-		"a Browser API as a template":    func() error { return cmdTemplate([]string{"save", "p", "--from", "pool"}) },
 		"a template file without a kind": func() error { return cmdTemplate([]string{"save", "x", "-f", settings}) },
 		"an rdp ttl that isn't a time":   func() error { return cmdRDP([]string{"win", "--ttl", "tomorrow"}) },
 		"api-keys set without a list":    func() error { return cmdAPIKeys([]string{"set", "key_1"}) },
@@ -229,9 +232,13 @@ func TestBuildWait(t *testing.T) {
 // wait asks until the resource is ready, and says so when it failed or
 // never came up.
 func TestWait(t *testing.T) {
-	phase := "Pending"
+	phase, stopped := "Pending", false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/workspace" {
+			_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"db","type":"storage","stopped":` + map[bool]string{true: "true", false: "false"}[stopped] + `}]}}`))
+			return
+		}
 		ready := phase == "Running"
 		_, _ = w.Write([]byte(`{"workloads":[{"id":"db","phase":"` + phase + `","ready":` + map[bool]string{true: "true", false: "false"}[ready] + `,"message":"m"}]}`))
 		if phase == "Pending" {
@@ -256,5 +263,15 @@ func TestWait(t *testing.T) {
 	phase = "Starting"
 	if err := cmdWait([]string{"db", "--timeout", "1ns"}); err == nil {
 		t.Error("not ready in time should be an error")
+	}
+	// Stopped and meant to be: said at once, not after the timeout.
+	phase, stopped = "Stopped", true
+	if err := cmdWait([]string{"db", "--timeout", "1h"}); err == nil || !strings.Contains(err.Error(), "is stopped") {
+		t.Errorf("a stopped resource: %v, want \"db is stopped\"", err)
+	}
+	// Just started (reads Stopped for a moment): it waits.
+	phase, stopped = "Stopped", false
+	if err := cmdWait([]string{"db", "--timeout", "1ns"}); err == nil || strings.Contains(err.Error(), "is stopped") {
+		t.Errorf("a resource just started: %v, want the timeout", err)
 	}
 }
