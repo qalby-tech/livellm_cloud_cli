@@ -3,7 +3,7 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
-## Unreleased
+## 0.2.0
 
 - `build ID --wait`: waits until the build it started is live and exits 0, or
   exits non-zero with the end of the build's log when it fails (`--timeout`,
