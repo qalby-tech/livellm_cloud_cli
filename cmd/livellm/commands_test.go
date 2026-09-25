@@ -79,77 +79,58 @@ func TestScreenAndCommandRequests(t *testing.T) {
 	}
 }
 
-// stop and start write the resource back whole, with only "stopped" changed:
-// the settings the command knows nothing about go back as they came.
+// stop and start patch "stopped" alone, so a change made meanwhile is kept;
+// they read the resource only to refuse what can't stop and to skip a no-op.
 func TestStopAndStart(t *testing.T) {
 	workloads := []map[string]any{
-		{"id": "web", "type": "pod", "pod": map[string]any{
-			"image":   "nginx",
-			"ports":   []any{map[string]any{"name": "game", "port": float64(25565), "tcp": true}},
-			"volumes": []any{map[string]any{"name": "data", "size": "10Gi", "mountPath": "/data"}},
-		}, "createdBy": map[string]any{"name": "a person"}},
+		{"id": "web", "type": "pod", "pod": map[string]any{"image": "nginx"}},
 		{"id": "box", "type": "vm-ubuntu", "stopped": true, "vm": map[string]any{"cpus": float64(2)}},
 		{"id": "db", "type": "storage", "storage": map[string]any{"engine": "postgres"}},
 		{"id": "chrome", "type": "browser", "browser": map[string]any{}},
 	}
-	var puts []struct {
-		path string
-		body map[string]any
+	type write struct {
+		method, path string
+		body         map[string]any
 	}
+	var writes []write
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/v1/workspace":
 			_ = json.NewEncoder(w).Encode(map[string]any{"name": "ws", "spec": map[string]any{"workloads": workloads}})
-		case r.Method == "PUT":
+		case r.Method == "GET":
+			w.WriteHeader(404)
+		default:
 			var b map[string]any
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &b)
-			puts = append(puts, struct {
-				path string
-				body map[string]any
-			}{r.URL.Path, b})
+			writes = append(writes, write{r.Method, r.URL.Path, b})
 			_, _ = w.Write([]byte(`{"status":"accepted"}`))
-		default:
-			w.WriteHeader(404)
-			_, _ = w.Write([]byte(`{"error":"no such route"}`))
 		}
 	}))
 	defer srv.Close()
 	t.Setenv("LIVELLM_API_URL", srv.URL)
 	t.Setenv("LIVELLM_API_KEY", "llc_test")
-	stdout := os.Stdout
-	devnull, _ := os.Open(os.DevNull)
-	os.Stdout = devnull
-	defer func() { os.Stdout = stdout }()
+	quiet(t)
 
 	if err := cmdStop([]string{"web"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(puts) != 1 || puts[0].path != "/v1/workloads/web" {
-		t.Fatalf("stop sent %v", puts)
+	want := []write{{"PATCH", "/v1/workloads/web", map[string]any{"stopped": true}}}
+	if !reflect.DeepEqual(writes, want) {
+		t.Fatalf("stop sent %v, want %v", writes, want)
 	}
-	want := map[string]any{}
-	b, _ := json.Marshal(workloads[0])
-	_ = json.Unmarshal(b, &want)
-	want["stopped"] = true
-	if !reflect.DeepEqual(puts[0].body, want) {
-		t.Errorf("stop wrote\n%v\nwant\n%v", puts[0].body, want)
-	}
-
 	if err := cmdStart([]string{"box"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(puts) != 2 || puts[1].path != "/v1/workloads/box" || puts[1].body["stopped"] != false || puts[1].body["vm"] == nil {
-		t.Errorf("start sent %v", puts[1:])
+	want = append(want, write{"PATCH", "/v1/workloads/box", map[string]any{"stopped": false}})
+	if !reflect.DeepEqual(writes, want) {
+		t.Errorf("start sent %v", writes[1:])
 	}
 
 	// already in that state: nothing is written
 	if err := cmdStop([]string{"box"}); err != nil {
 		t.Fatal(err)
-	}
-	if len(puts) != 2 {
-		t.Errorf("stopping a stopped machine wrote %v", puts[2:])
 	}
 	if err := cmdStop([]string{"nope"}); err == nil {
 		t.Error("stopping something that isn't there should be refused")
@@ -166,8 +147,145 @@ func TestStopAndStart(t *testing.T) {
 			t.Errorf("starting %s should be refused", id)
 		}
 	}
-	if len(puts) != 2 {
-		t.Errorf("refused stops wrote %v", puts[2:])
+	if len(writes) != 2 {
+		t.Errorf("no-op and refused stops wrote %v", writes[2:])
+	}
+}
+
+// quiet sends stdout to /dev/null for the rest of the test.
+func quiet(t *testing.T) {
+	t.Helper()
+	stdout := os.Stdout
+	devnull, _ := os.Open(os.DevNull)
+	os.Stdout = devnull
+	t.Cleanup(func() { os.Stdout = stdout; devnull.Close() })
+}
+
+// recorder answers every call with {} and keeps the last one.
+type recorded struct {
+	method, path string
+	body         map[string]any
+}
+
+func recorder(t *testing.T, last *recorded) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		*last = recorded{method: r.Method, path: r.URL.Path}
+		if len(raw) > 0 {
+			_ = json.Unmarshal(raw, &last.body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	quiet(t)
+}
+
+// The Browser API verbs and set send what the API expects.
+func TestBrowserAPIAndSetRequests(t *testing.T) {
+	var last recorded
+	recorder(t, &last)
+	dir := t.TempDir()
+	patch := dir + "/p.json"
+	_ = os.WriteFile(patch, []byte(`{"pod":{"cpu":"1"},"stopped":null}`), 0o600)
+	api := dir + "/api.json"
+	_ = os.WriteFile(api, []byte(`{"id":"scrapers","browsers":["a"]}`), 0o600)
+
+	cases := []struct {
+		name string
+		run  func() error
+		want recorded
+	}{
+		{"create named", func() error {
+			return cmdBrowserAPI([]string{"create", "scrapers", "--browsers", "agent-1, agent-2"})
+		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
+			"id": "scrapers", "autodiscover": false, "browsers": []any{"agent-1", "agent-2"}}}},
+		{"create every browser", func() error {
+			return cmdBrowserAPI([]string{"create", "all", "--all"})
+		}, recorded{"POST", "/v1/workloads/controller", map[string]any{"id": "all", "autodiscover": true}}},
+		{"create with a remote", func() error {
+			return cmdBrowserAPI([]string{"create", "mix", "--browsers", "a", "--remote", "office=wss://o.example.com/devtools/browser/x"})
+		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
+			"id": "mix", "autodiscover": false, "browsers": []any{"a"},
+			"externalBrowsers": []any{map[string]any{"id": "office", "wsUrl": "wss://o.example.com/devtools/browser/x"}}}}},
+		{"create from a file", func() error { return cmdCreate([]string{"browser-api", "-f", api}) },
+			recorded{"POST", "/v1/workloads/controller", map[string]any{"id": "scrapers", "browsers": []any{"a"}}}},
+		{"add", func() error { return cmdBrowserAPI([]string{"add", "scrapers", "agent-3"}) },
+			recorded{"PUT", "/v1/workloads/scrapers/browsers/agent-3", map[string]any{}}},
+		{"remove", func() error { return cmdBrowserAPI([]string{"remove", "scrapers", "agent-3"}) },
+			recorded{"DELETE", "/v1/workloads/scrapers/browsers/agent-3", nil}},
+		{"set", func() error { return cmdSet([]string{"web", "-f", patch}) },
+			recorded{"PATCH", "/v1/workloads/web", map[string]any{"pod": map[string]any{"cpu": "1"}, "stopped": nil}}},
+	}
+	for _, c := range cases {
+		last = recorded{}
+		if err := c.run(); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if !reflect.DeepEqual(last, c.want) {
+			t.Errorf("%s: sent %v, want %v", c.name, last, c.want)
+		}
+	}
+
+	refused := map[string][]string{
+		"no browsers":        {"create", "empty"},
+		"all and names":      {"create", "x", "--all", "--browsers", "a"},
+		"remote not ws":      {"create", "x", "--remote", "office=https://o"},
+		"remote without id":  {"create", "x", "--remote", "wss://o"},
+		"add without a name": {"add", "scrapers"},
+		"unknown verb":       {"grow", "scrapers"},
+	}
+	for name, args := range refused {
+		last = recorded{}
+		if err := cmdBrowserAPI(args); err == nil {
+			t.Errorf("%s: should be refused", name)
+		}
+		if last.method != "" {
+			t.Errorf("%s: sent %v", name, last)
+		}
+	}
+}
+
+// show reads the Browser API's browsers from the workspace and how they are
+// doing from the status.
+func TestBrowserAPIShow(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/workspace":
+			_, _ = w.Write([]byte(`{"spec":{"workloads":[
+				{"id":"scrapers","type":"controller","controller":{"browsers":["agent-2"],"externalBrowsers":[{"id":"office","wsUrl":"wss://o"}]}},
+				{"id":"agent-2","type":"browser"}]}}`))
+		case "/v1/status":
+			_, _ = w.Write([]byte(`{"workloads":[{"id":"scrapers","phase":"Running","ready":true,"browsers":[{"id":"agent-2","tabs":3}]}]}`))
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	r, w, _ := os.Pipe()
+	stdout := os.Stdout
+	os.Stdout = w
+	err := browserAPIShow([]string{"scrapers"})
+	w.Close()
+	os.Stdout = stdout
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.NewDecoder(r).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got["drives"] != "only these" || !reflect.DeepEqual(got["browsers"], []any{"agent-2"}) ||
+		!reflect.DeepEqual(got["remoteBrowsers"], []any{"office"}) || got["state"] != "running" || got["answering"] == nil {
+		t.Errorf("show: %v", got)
+	}
+	quiet(t)
+	if err := browserAPIShow([]string{"agent-2"}); err == nil {
+		t.Error("show on a browser should say it isn't a Browser API")
 	}
 }
 

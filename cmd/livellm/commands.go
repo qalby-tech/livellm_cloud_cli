@@ -455,7 +455,10 @@ func cmdKeys([]string) error {
 func cmdCreate(args []string) error {
 	kind, rest, err := needArg(args, "kind of resource")
 	if err != nil {
-		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage, browser — or apps, several at once")
+		return fmt.Errorf("which kind? vm-ubuntu, vm-ubuntu-desktop, vm-windows, pod, storage, browser, browser-api — or apps, several at once")
+	}
+	if kind == "browser-api" {
+		kind = browserAPIType
 	}
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the resource's settings")
@@ -540,11 +543,10 @@ var stoppable = map[string]bool{
 
 func cmdStart(args []string) error { return setStopped(args, false) }
 
-// setStopped stops or starts a resource the way the console does: it reads
-// the resource as the workspace holds it, changes only "stopped" and writes
-// the whole of it back. Everything else — including the settings this command
-// knows nothing about — goes back as it came; passwords and other write-only
-// values are never read, and the platform keeps the ones it has.
+// setStopped stops or starts a resource. It reads the resource only to refuse
+// what can't be stopped and to say when nothing would change; the write is a
+// patch of "stopped" alone, so a change made meanwhile (in the console, by
+// another client) is kept.
 func setStopped(args []string, stop bool) error {
 	id, _, err := needArg(args, "resource")
 	if err != nil {
@@ -582,11 +584,41 @@ func setStopped(args []string, stop bool) error {
 		}
 		return print(map[string]any{"id": id, "already": state})
 	}
-	w["stopped"] = stop
-	if err := call("PUT", "/v1/workloads/"+url.PathEscape(id), w, nil); err != nil {
+	if err := patchWorkload(id, map[string]any{"stopped": stop}); err != nil {
 		return err
 	}
 	return print(map[string]any{verb: id})
+}
+
+// cmdSet changes some of a resource's settings: the file holds only what
+// changes, in the shape the resource has (a JSON merge patch), and null
+// removes a setting.
+func cmdSet(args []string) error {
+	id, rest, err := needArg(args, "resource")
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("set", flag.ExitOnError)
+	file := fs.String("f", "", "a JSON file with the settings that change")
+	_ = fs.Parse(rest)
+	if *file == "" {
+		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}")
+	}
+	raw, err := os.ReadFile(*file)
+	if err != nil {
+		return err
+	}
+	var patch map[string]any
+	if err := json.Unmarshal(raw, &patch); err != nil {
+		return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
+	}
+	if len(patch) == 0 {
+		return fmt.Errorf("%s changes nothing", *file)
+	}
+	if err := patchWorkload(id, patch); err != nil {
+		return err
+	}
+	return print(map[string]any{"changed": id})
 }
 
 func cmdBuild(args []string) error {

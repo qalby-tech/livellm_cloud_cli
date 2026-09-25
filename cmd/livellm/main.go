@@ -36,9 +36,16 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm restart ID                         restart one
   livellm stop ID                            stop one; its disks are kept
   livellm start ID                           start a stopped one again
+  livellm set ID -f FILE                     change some settings (only what the file holds)
   livellm build ID                           build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
+
+  livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
+                                             one address over several browsers
+  livellm browser-api show NAME              the browsers it drives, and their tabs
+  livellm browser-api add NAME BROWSER       have it drive one more browser
+  livellm browser-api remove NAME BROWSER    take a browser out of it
 
 Environment:
   LIVELLM_API_KEY    use a workspace key instead of signing in
@@ -91,6 +98,10 @@ func main() {
 		err = cmdStop(args)
 	case "start":
 		err = cmdStart(args)
+	case "set":
+		err = cmdSet(args)
+	case "browser-api", "browser-apis":
+		err = cmdBrowserAPI(args)
 	case "build":
 		err = cmdBuild(args)
 	case "builds":

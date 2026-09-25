@@ -5,6 +5,17 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `browser-api create NAME --browsers a,b` (or `--all` for every browser in
+  the workspace, `--remote id=wss://…` for a browser running elsewhere): one
+  address over several browsers. `browser-api show NAME` lists the browsers
+  it drives and how they are doing; `browser-api add NAME BROWSER` and
+  `browser-api remove NAME BROWSER` change which browsers it drives, one at a
+  time, without rewriting the rest. `create browser-api -f FILE` works too.
+- `set ID -f FILE`: change some of a resource's settings. The file holds only
+  what changes; everything else stays as it is.
+- `stop` and `start` change only whether the resource runs. They used to
+  write the whole resource back, which could undo a change made meanwhile in
+  the console.
 - `stop ID` and `start ID`: stop an app or a machine without deleting it
   (its disks are kept and only they are billed), and start it again. The
   resource is written back exactly as it was, with only its running state

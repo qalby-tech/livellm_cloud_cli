@@ -45,6 +45,19 @@ unless the port is meant for everyone). Volumes keep their data across
 restarts and stops; a volume can grow but not shrink, and removing one deletes
 its data.
 
+Several browsers behind one address, a Browser API:
+
+```sh
+livellm browser-api create scrapers --browsers agent-1,agent-2
+livellm browser-api add scrapers agent-3      # one more browser, same address
+livellm connect scrapers                       # its address and a token
+```
+
+A call that names no browser goes to the one with the fewest open tabs; a
+session (`X-Session-Id`) stays on its browser; `/browsers/agent-2/…` or
+`X-Browser-Id: agent-2` picks one. `set ID -f changes.json` changes only the
+settings the file holds.
+
 `login` asks for full access by default: you are the person who owns the
 workspace. `--access use` or `--access create` narrows it, and the console
 shows what is being asked for before you press Allow.
