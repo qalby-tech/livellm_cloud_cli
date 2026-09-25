@@ -41,6 +41,13 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
 
+  livellm backups ID                         a machine's or a database's backups
+  livellm backup ID                          back up now
+          [--clean] [--name N]               (a machine: stopped first; its name)
+  livellm restore ID BACKUP                  a machine: put its disk back (stop it first)
+  livellm restore ID BACKUP --as NEW [--at TIME]
+                                             a database: restore into a new database
+
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
@@ -109,6 +116,12 @@ func main() {
 		err = cmdBuilds(args)
 	case "deploy":
 		err = cmdDeploy(args)
+	case "backups":
+		err = cmdBackups(args)
+	case "backup":
+		err = cmdBackup(args)
+	case "restore":
+		err = cmdRestore(args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return
