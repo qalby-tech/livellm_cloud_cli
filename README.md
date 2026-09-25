@@ -53,6 +53,11 @@ livellm browser-api add scrapers agent-3      # one more browser, same address
 livellm connect scrapers                       # its address and a token
 ```
 
+A browser running elsewhere joins with `--remote office=wss://…`. If it needs a
+login header, put the header in an environment variable and name it:
+`--remote-auth office=OFFICE_AUTH`. It is never on the command line and never
+shown again.
+
 A call that names no browser goes to the one with the fewest open tabs; a
 session (`X-Session-Id`) stays on its browser; `/browsers/agent-2/…` or
 `X-Browser-Id: agent-2` picks one. `set ID -f changes.json` changes only the

@@ -43,6 +43,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
 
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
+      [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser
   livellm browser-api remove NAME BROWSER    take a browser out of it

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -48,8 +49,10 @@ func (r *repeated) String() string     { return strings.Join(*r, ",") }
 func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 
 // browserAPIBody is what `browser-api create` sends: the browsers it names,
-// or every browser, and remote browsers as id=ws-address.
-func browserAPIBody(id, browsers string, all bool, remotes []string) (map[string]any, error) {
+// or every browser, and remote browsers as id=ws-address. auths maps a
+// remote id to the environment variable holding its login header, so the
+// header never appears on the command line or in the shell history.
+func browserAPIBody(id, browsers string, all bool, remotes, auths []string) (map[string]any, error) {
 	body := map[string]any{"id": id}
 	var names []string
 	for _, b := range strings.Split(browsers, ",") {
@@ -60,13 +63,33 @@ func browserAPIBody(id, browsers string, all bool, remotes []string) (map[string
 	if all && len(names) > 0 {
 		return nil, fmt.Errorf("--all already means every browser in the workspace; leave out --browsers")
 	}
+	authVar := map[string]string{}
+	for _, a := range auths {
+		rid, env, ok := strings.Cut(a, "=")
+		if !ok || rid == "" || env == "" {
+			return nil, fmt.Errorf("--remote-auth takes name=ENV_VAR (the variable holding the header), got %q", a)
+		}
+		authVar[rid] = env
+	}
 	var ext []map[string]any
 	for _, r := range remotes {
 		rid, ws, ok := strings.Cut(r, "=")
 		if !ok || rid == "" || !(strings.HasPrefix(ws, "ws://") || strings.HasPrefix(ws, "wss://")) {
 			return nil, fmt.Errorf("--remote takes name=ws://address, got %q", r)
 		}
-		ext = append(ext, map[string]any{"id": rid, "wsUrl": ws})
+		e := map[string]any{"id": rid, "wsUrl": ws}
+		if env, ok := authVar[rid]; ok {
+			v := strings.TrimSpace(os.Getenv(env))
+			if v == "" {
+				return nil, fmt.Errorf("--remote-auth %s: the variable %s is empty or unset", rid, env)
+			}
+			e["authHeader"] = v
+			delete(authVar, rid)
+		}
+		ext = append(ext, e)
+	}
+	for rid := range authVar {
+		return nil, fmt.Errorf("--remote-auth %s: no --remote %s=wss://… to go with it", rid, rid)
 	}
 	if !all && len(names) == 0 && len(ext) == 0 {
 		return nil, fmt.Errorf("which browsers? --browsers a,b, --all for every browser in the workspace, or --remote name=wss://…")
@@ -91,8 +114,10 @@ func browserAPICreate(args []string) error {
 	all := fs.Bool("all", false, "every browser in the workspace, including ones made later")
 	var remotes repeated
 	fs.Var(&remotes, "remote", "a browser running elsewhere: name=wss://address (repeatable)")
+	var auths repeated
+	fs.Var(&auths, "remote-auth", "a remote browser's login header, read from an environment variable: name=ENV_VAR (repeatable); \"Name: value\", or a bare value sent as Authorization; never shown again")
 	_ = fs.Parse(rest)
-	body, err := browserAPIBody(id, *browsers, *all, remotes)
+	body, err := browserAPIBody(id, *browsers, *all, remotes, auths)
 	if err != nil {
 		return err
 	}

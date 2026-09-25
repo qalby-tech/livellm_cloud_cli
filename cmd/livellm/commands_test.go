@@ -211,6 +211,12 @@ func TestBrowserAPIAndSetRequests(t *testing.T) {
 		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
 			"id": "mix", "autodiscover": false, "browsers": []any{"a"},
 			"externalBrowsers": []any{map[string]any{"id": "office", "wsUrl": "wss://o.example.com/devtools/browser/x"}}}}},
+		{"create with a remote's login from the environment", func() error {
+			t.Setenv("OFFICE_AUTH", " X-Token: s3cret ")
+			return cmdBrowserAPI([]string{"create", "mix", "--all", "--remote", "office=wss://o", "--remote-auth", "office=OFFICE_AUTH"})
+		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
+			"id": "mix", "autodiscover": true,
+			"externalBrowsers": []any{map[string]any{"id": "office", "wsUrl": "wss://o", "authHeader": "X-Token: s3cret"}}}}},
 		{"create from a file", func() error { return cmdCreate([]string{"browser-api", "-f", api}) },
 			recorded{"POST", "/v1/workloads/controller", map[string]any{"id": "scrapers", "browsers": []any{"a"}}}},
 		{"add", func() error { return cmdBrowserAPI([]string{"add", "scrapers", "agent-3"}) },
@@ -231,12 +237,15 @@ func TestBrowserAPIAndSetRequests(t *testing.T) {
 	}
 
 	refused := map[string][]string{
-		"no browsers":        {"create", "empty"},
-		"all and names":      {"create", "x", "--all", "--browsers", "a"},
-		"remote not ws":      {"create", "x", "--remote", "office=https://o"},
-		"remote without id":  {"create", "x", "--remote", "wss://o"},
-		"add without a name": {"add", "scrapers"},
-		"unknown verb":       {"grow", "scrapers"},
+		"no browsers":          {"create", "empty"},
+		"all and names":        {"create", "x", "--all", "--browsers", "a"},
+		"remote not ws":        {"create", "x", "--remote", "office=https://o"},
+		"remote without id":    {"create", "x", "--remote", "wss://o"},
+		"add without a name":   {"add", "scrapers"},
+		"login without remote": {"create", "x", "--all", "--remote-auth", "office=OFFICE_AUTH"},
+		"login var unset":      {"create", "x", "--remote", "office=wss://o", "--remote-auth", "office=LIVELLM_TEST_UNSET_VAR"},
+		"login not name=var":   {"create", "x", "--remote", "office=wss://o", "--remote-auth", "office"},
+		"unknown verb":         {"grow", "scrapers"},
 	}
 	for name, args := range refused {
 		last = recorded{}

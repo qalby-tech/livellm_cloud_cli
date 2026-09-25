@@ -11,6 +11,8 @@ platform and attaches them to the GitHub release.
   it drives and how they are doing; `browser-api add NAME BROWSER` and
   `browser-api remove NAME BROWSER` change which browsers it drives, one at a
   time, without rewriting the rest. `create browser-api -f FILE` works too.
+  `--remote-auth id=ENV_VAR` gives a remote browser its login header from an
+  environment variable, so it never appears on the command line.
 - `set ID -f FILE`: change some of a resource's settings. The file holds only
   what changes; everything else stays as it is.
 - `stop` and `start` change only whether the resource runs. They used to
