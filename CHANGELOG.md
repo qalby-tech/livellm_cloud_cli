@@ -15,7 +15,9 @@ platform and attaches them to the GitHub release.
 - `rm ID --with-databases` deletes an app together with the databases made
   with it that no other app uses, and prints which went and which stayed
   (`databases: {deleted, kept}`); `--force` deletes what another app's
-  settings still name.
+  settings still name. `rm` waits up to three minutes for the answer (a
+  delete clears away what belonged to the resource first), and when the
+  answer is lost on the way it looks at the workspace: gone is deleted.
 - `template save NAME --from ID` has LiveLLM read the resource, as the console
   saves it: an app keeps its plain env values and the names of its secrets;
   an app of a Composable App (a stack, or made with databases) saves the whole

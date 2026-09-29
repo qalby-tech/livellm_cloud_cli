@@ -422,3 +422,60 @@ func TestListShowsDatabaseLinks(t *testing.T) {
 		t.Errorf("usedBy: web %v, db %v", by["web"].UsedBy, by["db"].UsedBy)
 	}
 }
+
+// A delete whose answer is lost on the way (LiveLLM took longer than the
+// connection lasted) is looked at again: gone is deleted, and the databases
+// made with the app say which went.
+func TestRemoveWhenTheAnswerIsLost(t *testing.T) {
+	deleted := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			deleted = true
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close() // no answer at all
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if !deleted {
+			_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"web","type":"pod"},
+				{"id":"db","type":"storage","storage":{"createdWith":["web"]}},
+				{"id":"cache","type":"storage","storage":{"createdWith":["web"]}},
+				{"id":"other","type":"storage","storage":{}}]}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"cache","type":"storage","storage":{"createdWith":["web"]}},{"id":"other","type":"storage"}]}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	stdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = stdout }()
+	if err := cmdRemove([]string{"web", "--with-databases", "-y"}); err != nil {
+		t.Fatalf("the workspace shows it gone: %v", err)
+	}
+	w.Close()
+	raw, _ := io.ReadAll(r)
+	var got map[string]any
+	_ = json.Unmarshal(raw, &got)
+	want := map[string]any{"deleted": []any{"db"}, "kept": []any{"cache"}}
+	if got["deleted"] != "web" || !reflect.DeepEqual(got["databases"], want) {
+		t.Errorf("printed %s", raw)
+	}
+	// Still there after a lost answer: the error stands.
+	deleted = false
+	os.Stdout, _ = os.Open(os.DevNull)
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close()
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"web","type":"pod"}]}}`))
+	})
+	if err := cmdRemove([]string{"web", "-y"}); err == nil {
+		t.Error("a delete with no answer and the app still there should be an error")
+	}
+}

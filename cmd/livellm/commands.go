@@ -731,6 +731,11 @@ func secretFlags(missing []string) string {
 	return strings.Join(flags, " ")
 }
 
+// removeTimeout is how long rm waits for LiveLLM to answer: a delete clears
+// away what belonged to the resource before it answers, which can take a
+// while, and hanging up early could leave some of it behind.
+const removeTimeout = 3 * time.Minute
+
 func cmdRemove(args []string) error {
 	id, rest, err := needArg(args, "resource")
 	if err != nil {
@@ -759,15 +764,95 @@ func cmdRemove(args []string) error {
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
+	// The databases made with the app, to say which went should the answer
+	// be lost on the way.
+	var madeWith []string
+	if *withDBs {
+		madeWith, _ = databasesMadeWith(id)
+	}
+	if client.Timeout < removeTimeout {
+		client.Timeout = removeTimeout
+	}
 	var out map[string]any
 	if err := call("DELETE", path, nil, &out); err != nil {
-		return err
+		var p *problem
+		if asProblem(err, &p) {
+			return err // refused: nothing was deleted
+		}
+		// No answer came back. LiveLLM may have done it all the same: look.
+		answer, lookErr := deletedAfterAll(id, *withDBs, madeWith)
+		if lookErr != nil || answer == nil {
+			return err
+		}
+		return print(answer)
 	}
 	answer := map[string]any{"deleted": id}
 	if dbs, ok := out["databases"]; ok {
 		answer["databases"] = dbs
 	}
 	return print(answer)
+}
+
+// databasesMadeWith are the workspace's databases made together with an app.
+func databasesMadeWith(app string) ([]string, error) {
+	all, err := workspaceWorkloads()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, w := range all {
+		st, _ := w["storage"].(map[string]any)
+		made, _ := st["createdWith"].([]any)
+		for _, a := range made {
+			if a == app {
+				out = append(out, fmt.Sprint(w["id"]))
+			}
+		}
+	}
+	return out, nil
+}
+
+// deletedAfterAll is what rm prints when the delete's answer was lost but the
+// workspace shows the resource gone: which of the databases made with it went
+// too. nil while the resource is still there.
+func deletedAfterAll(id string, withDBs bool, madeWith []string) (map[string]any, error) {
+	all, err := workspaceWorkloads()
+	if err != nil {
+		return nil, err
+	}
+	left := map[string]bool{}
+	for _, w := range all {
+		left[fmt.Sprint(w["id"])] = true
+	}
+	if left[id] {
+		return nil, nil
+	}
+	answer := map[string]any{"deleted": id, "note": "LiveLLM's answer was lost on the way; the workspace shows it deleted"}
+	if withDBs {
+		deleted, kept := []string{}, []string{}
+		for _, d := range madeWith {
+			if left[d] {
+				kept = append(kept, d)
+			} else {
+				deleted = append(deleted, d)
+			}
+		}
+		answer["databases"] = map[string]any{"deleted": deleted, "kept": kept}
+	}
+	return answer, nil
+}
+
+// workspaceWorkloads are the workspace's resources as it holds them.
+func workspaceWorkloads() ([]map[string]any, error) {
+	var ws struct {
+		Spec struct {
+			Workloads []map[string]any `json:"workloads"`
+		} `json:"spec"`
+	}
+	if err := callRetrying("GET", "/v1/workspace", &ws); err != nil {
+		return nil, err
+	}
+	return ws.Spec.Workloads, nil
 }
 
 func cmdRestart(args []string) error {
