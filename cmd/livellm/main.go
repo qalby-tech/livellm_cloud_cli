@@ -28,7 +28,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm connect ID [--tool TOOL]           how to reach it
           [--desktop N] [--screen-width PX] [--format png|jpeg]
   livellm exec ID "COMMAND"                  run a command on a machine (PowerShell on Windows)
-          [--session S] [--timeout N] [--desktop N]
+          [--session S] [--timeout N] [--desktop N]   (waits until it ends, up to --timeout)
   livellm share ID [--control] [--for 1h|24h|7d] [--desktop N]
                                              a link to watch or use a screen
   livellm shares ID                          a screen's open links

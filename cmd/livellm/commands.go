@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -287,6 +288,13 @@ func fillRawAddresses(id string, out map[string]any) {
 	}
 }
 
+// execPoll is how long one call waits for a command (the API's most) and
+// execSlack how much past the command's own time limit exec keeps looking.
+const (
+	execPoll  = 55
+	execSlack = 2 * time.Minute
+)
+
 func cmdExec(args []string) error {
 	id, rest, err := needArg(args, "machine")
 	if err != nil {
@@ -301,22 +309,67 @@ func cmdExec(args []string) error {
 	timeout := fs.Int("timeout", 60, "seconds, up to 600")
 	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
 	_ = fs.Parse(rest)
-	body := map[string]any{"command": command, "timeout": *timeout}
+	body := map[string]any{"command": command, "timeout": *timeout, "wait": execPoll}
 	if *session != "" {
 		body["session"] = *session
 	}
 	if *desktop >= 0 {
 		body["desktop"] = *desktop
 	}
-	// The answer comes when the command ends: wait a little longer than it may run.
-	if t := time.Duration(*timeout+30) * time.Second; t > client.Timeout {
+	// Each call waits up to execPoll seconds for the command; getting onto
+	// the computer comes on top of that.
+	if t := time.Duration(execPoll+35) * time.Second; t > client.Timeout {
 		client.Timeout = t
 	}
 	var out map[string]any
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/exec", body, &out); err != nil {
 		return err
 	}
+	// A command still going when the call answered keeps going on the
+	// computer: look again until it ends. It ends by its time limit at the
+	// latest (the platform stops it then).
+	deadline := time.Now().Add(time.Duration(*timeout)*time.Second + execSlack)
+	for !execDone(out) {
+		run, _ := out["runId"].(string)
+		if run == "" {
+			return fmt.Errorf("LiveLLM answered a command still going without its run id")
+		}
+		if time.Now().After(deadline) {
+			_ = print(out)
+			return fmt.Errorf("%s is still running after its time limit; it was left as it is (run %s)", id, run)
+		}
+		var next map[string]any
+		path := "/v1/workloads/" + url.PathEscape(id) + "/exec/" + url.PathEscape(run) + "?wait=" + strconv.Itoa(execPoll)
+		if err := callRetrying("GET", path, &next); err != nil {
+			return err
+		}
+		out = next
+	}
 	return print(out)
+}
+
+// execDone reads whether a command's answer is its end. An answer without
+// done is from before runs, and is always the end.
+func execDone(out map[string]any) bool {
+	done, ok := out["done"].(bool)
+	return !ok || done
+}
+
+// callRetrying makes a read that may be repeated, trying twice more when the
+// network, not LiveLLM, failed it.
+func callRetrying(method, path string, out any) error {
+	var err error
+	for try := 0; try < 3; try++ {
+		if err = call(method, path, nil, out); err == nil {
+			return nil
+		}
+		var p *problem
+		if asProblem(err, &p) || try == 2 {
+			return err
+		}
+		time.Sleep(time.Duration(try+1) * 2 * time.Second)
+	}
+	return err
 }
 
 func cmdShare(args []string) error {

@@ -43,9 +43,9 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		{"exec", func() error {
 			return cmdExec([]string{"box", "uname -a", "--session", "s1", "--timeout", "120", "--desktop", "0"})
 		}, got{"POST", "/v1/workloads/box/exec", map[string]any{
-			"command": "uname -a", "session": "s1", "timeout": float64(120), "desktop": float64(0)}}},
+			"command": "uname -a", "session": "s1", "timeout": float64(120), "desktop": float64(0), "wait": float64(55)}}},
 		{"exec defaults", func() error { return cmdExec([]string{"box", "ls"}) },
-			got{"POST", "/v1/workloads/box/exec", map[string]any{"command": "ls", "timeout": float64(60)}}},
+			got{"POST", "/v1/workloads/box/exec", map[string]any{"command": "ls", "timeout": float64(60), "wait": float64(55)}}},
 		{"share view", func() error { return cmdShare([]string{"box"}) },
 			got{"POST", "/v1/workloads/box/shares", map[string]any{"mode": "view"}}},
 		{"share control", func() error {
@@ -326,5 +326,61 @@ func TestConnectRawAddresses(t *testing.T) {
 	}
 	if h := u[2].(map[string]any); h["address"] != nil {
 		t.Errorf("an HTTP port got an address: %v", h)
+	}
+}
+
+// A command still going when exec's call answers is waited for: exec looks at
+// its run until it ends and prints the end.
+func TestExecWaitsForACommandStillGoing(t *testing.T) {
+	var calls []string
+	looks := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "POST":
+			w.WriteHeader(202)
+			_, _ = w.Write([]byte(`{"done":false,"runId":"r1","output":"a\n"}`))
+		case looks == 0:
+			looks++
+			w.WriteHeader(202)
+			_, _ = w.Write([]byte(`{"done":false,"runId":"r1","output":"a\nb\n"}`))
+		default:
+			_, _ = w.Write([]byte(`{"done":true,"runId":"r1","exitCode":3,"output":"a\nb\nc\n"}`))
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	out, err := stdout(t, func() error { return cmdExec([]string{"box", "make", "--timeout", "300"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"POST /v1/workloads/box/exec", "GET /v1/workloads/box/exec/r1?wait=55", "GET /v1/workloads/box/exec/r1?wait=55"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Errorf("calls %v", calls)
+	}
+	var end map[string]any
+	if err := json.Unmarshal([]byte(out), &end); err != nil || end["done"] != true || end["exitCode"] != float64(3) || end["output"] != "a\nb\nc\n" {
+		t.Errorf("printed %q", out)
+	}
+}
+
+// An answer from before runs (no done) is the command's end.
+func TestExecEarlierAnswerIsTheEnd(t *testing.T) {
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"exitCode":0,"stdout":"hi\n","stderr":""}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	if _, err := stdout(t, func() error { return cmdExec([]string{"box", "echo hi"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("%d calls", n)
 	}
 }

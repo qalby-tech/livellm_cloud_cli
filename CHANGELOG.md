@@ -5,6 +5,12 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `exec` waits for a long command: a command still going when the call
+  answers (after 55 s) keeps going on the machine, and `exec` looks at it
+  again until it ends, up to its `--timeout` (the platform stops it then, exit
+  code 124) and two minutes more. The answer is the platform's new shape:
+  `done`, `exitCode`, `output` (stdout and stderr together), `truncated`,
+  `durationMs` and `runId`.
 - `exec ID "COMMAND"` runs on Windows machines too, in PowerShell (bash on
   Linux machines and Desktop Apps); the help says so.
 - `login` signs in in two calls: the first prints the link as JSON
