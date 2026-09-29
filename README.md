@@ -6,7 +6,7 @@ from a terminal.
 ```sh
 go install github.com/qalby-tech/livellm_cloud_cli/cmd/livellm@latest
 
-livellm login --wait   # prints a link; press Allow in the console
+livellm login          # prints a link; press Allow, then run login again if it returned
 livellm ls             # what you have
 livellm logs web       # why something isn't working
 livellm connect shop   # how to reach it
