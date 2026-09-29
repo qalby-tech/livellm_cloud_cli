@@ -5,6 +5,9 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `unshare` with a sign-in closes the screen links that sign-in made; another
+  agent's, or one made in the console, is refused (403) unless the sign-in
+  may change anything (full access). With an API key nothing changes.
 - A Desktop App is one desktop (breaking): `--desktop N` is gone from
   `connect`, `exec`, `share` and `screenshot`, and `create desktop` takes no
   `replicas` (more than 1 is refused). Make a Desktop App for each desktop
