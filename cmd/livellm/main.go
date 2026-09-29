@@ -42,9 +42,12 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm reservations                       machines agents are holding
 
   livellm create TYPE -f FILE                create a resource from a JSON file
-  livellm create --template T --id NEW [-f FILE]
-                                             create one from a saved template
-  livellm rm ID                              delete one (asks first)
+  livellm create apps -f FILE                an app of several services and its databases, at once:
+                                             {"apps": [...], "databases": [...]} (links in each app's "databases")
+  livellm create --template T --id NEW       create from a saved template (a Composable App: --id is its name)
+          [--secret PATH=VALUE] [--secret-env PATH=VAR] [-f FILE]
+                                             the secrets it needs: API_KEY=…, credentials.password=…
+  livellm rm ID [--with-databases] [--force] delete one (asks first); an app: with the databases made with it
   livellm restart ID                         restart one
   livellm stop ID                            stop one; its disks are kept
   livellm start ID                           start a stopped one again
@@ -63,7 +66,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm backups rm ID BACKUP               a machine's backup: delete it (asks first)
 
   livellm templates                          saved templates
-  livellm template save NAME --from ID       save a resource's settings (never its logins)
+  livellm template save NAME --from ID       save a resource's settings (never its logins or secrets);
+                                             an app of a Composable App: the whole app, with its databases
   livellm template save NAME --kind TYPE -f FILE
   livellm template show T | template rm T
 

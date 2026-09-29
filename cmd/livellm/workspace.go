@@ -63,41 +63,13 @@ func findTemplate(ref string) (*template, error) {
 	return nil, fmt.Errorf("%d templates are called %q: use the id (livellm templates)", len(hits), ref)
 }
 
-// kindBlock is where a resource type keeps its settings on the resource.
+// kindBlock is where a resource type keeps its settings on the resource, and
+// a template its config. A Composable App's template (kind stack) holds its
+// services and databases.
 var kindBlock = map[string]string{
 	"vm-ubuntu": "vm", "vm-ubuntu-desktop": "vm", "vm-windows": "vm",
 	"pod": "pod", "browser": "browser", "desktop": "desktop", "controller": "controller", "storage": "storage",
-}
-
-// templateConfig is what a resource saves as a template: its settings, less
-// what belongs to that one resource (logins, passwords, env values, a pull
-// credential). The console keeps the same things out.
-func templateConfig(w map[string]any) (kind string, config map[string]any, err error) {
-	kind, _ = w["type"].(string)
-	block := kindBlock[kind]
-	if block == "" {
-		return "", nil, fmt.Errorf("a %s can't be saved as a template", kind)
-	}
-	spec, _ := w[block].(map[string]any)
-	clean := map[string]any{}
-	for k, v := range spec {
-		clean[k] = v
-	}
-	switch block {
-	case "vm":
-		delete(clean, "credentials")
-	case "storage":
-		delete(clean, "credentials")
-		delete(clean, "restoreFrom") // a restore is this database's own history
-	case "pod":
-		delete(clean, "env")
-		delete(clean, "secretEnv")
-		delete(clean, "imageAuth")
-		if src, ok := clean["source"].(map[string]any); ok {
-			clean["source"] = map[string]any{"git": src["git"]}
-		}
-	}
-	return kind, map[string]any{block: clean}, nil
+	"stack": "stack",
 }
 
 func cmdTemplates(args []string) error {
@@ -124,8 +96,8 @@ func cmdTemplate(args []string) error {
 			return err
 		}
 		fs := flag.NewFlagSet("template save", flag.ExitOnError)
-		from := fs.String("from", "", "save this resource's settings")
-		kind := fs.String("kind", "", "with -f: the type the settings are for (vm-ubuntu, pod, browser…)")
+		from := fs.String("from", "", "save this resource's settings (an app of a Composable App: the whole app, with its databases)")
+		kind := fs.String("kind", "", "with -f: the type the settings are for (vm-ubuntu, pod, browser, storage, stack…)")
 		file := fs.String("f", "", "a JSON file with the settings, as a create takes them")
 		desc := fs.String("description", "", "a line about what it is for")
 		_ = fs.Parse(rest)
@@ -137,18 +109,12 @@ func cmdTemplate(args []string) error {
 		case *from != "" && *file != "":
 			return fmt.Errorf("pass --from or -f, not both")
 		case *from != "":
-			w, err := findWorkload(*from)
-			if err != nil {
-				return err
-			}
-			k, config, err := templateConfig(w)
-			if err != nil {
-				return err
-			}
-			body["kind"], body["config"] = k, config
+			// LiveLLM reads the resource's settings, as the console saves
+			// them: never a password or a secret value.
+			body["from"] = *from
 		case *file != "":
 			if kindBlock[*kind] == "" {
-				return fmt.Errorf("with -f, say which type it is for: --kind vm-ubuntu, pod, browser, desktop, storage…")
+				return fmt.Errorf("with -f, say which type it is for: --kind vm-ubuntu, pod, browser, desktop, storage, stack…")
 			}
 			raw, err := os.ReadFile(*file)
 			if err != nil {
@@ -199,29 +165,6 @@ func cmdTemplate(args []string) error {
 		return print(map[string]any{"deleted": t.ID, "name": t.Name})
 	}
 	return fmt.Errorf("template %s? save, show or rm", verb)
-}
-
-// fromTemplate is the create body a template gives: its settings, the new
-// id, and whatever the file adds (a login, env values) on top.
-func fromTemplate(ref, id string, extra map[string]any) (string, map[string]any, error) {
-	t, err := findTemplate(ref)
-	if err != nil {
-		return "", nil, err
-	}
-	block := kindBlock[t.Kind]
-	settings, _ := t.Config[block].(map[string]any)
-	if settings == nil {
-		settings = map[string]any{}
-	}
-	body := map[string]any{}
-	for k, v := range settings {
-		body[k] = v
-	}
-	for k, v := range extra {
-		body[k] = v
-	}
-	body["id"] = id
-	return t.Kind, body, nil
 }
 
 // findWorkload is one resource as the workspace holds it.

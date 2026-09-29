@@ -60,6 +60,10 @@ type resource struct {
 	CreatedBy string   `json:"createdBy,omitempty"`
 	Endpoints []string `json:"endpoints,omitempty"`
 	StopsAt   string   `json:"stopsAt,omitempty"`
+	// Databases are the databases an app is linked to; UsedBy the apps that
+	// link a database or wait for it.
+	Databases []string `json:"databases,omitempty"`
+	UsedBy    []string `json:"usedBy,omitempty"`
 }
 
 // statusWarning carries why the live state is missing, when it is: a resource
@@ -84,11 +88,13 @@ func resources() ([]resource, error) {
 	}
 	var live struct {
 		Workloads []struct {
-			ID        string `json:"id"`
-			Phase     string `json:"phase"`
-			Ready     bool   `json:"ready"`
-			ExpiresAt string `json:"expiresAt"`
-			SSH       string `json:"ssh"`
+			ID        string   `json:"id"`
+			Phase     string   `json:"phase"`
+			Ready     bool     `json:"ready"`
+			ExpiresAt string   `json:"expiresAt"`
+			SSH       string   `json:"ssh"`
+			Databases []string `json:"databases"`
+			UsedBy    []string `json:"usedBy"`
 			Endpoints []struct {
 				URL  string `json:"url"`
 				Addr string `json:"addr"`
@@ -114,6 +120,7 @@ func resources() ([]resource, error) {
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]
 			r.State, r.Ready, r.StopsAt = strings.ToLower(l.Phase), l.Ready, l.ExpiresAt
+			r.Databases, r.UsedBy = l.Databases, l.UsedBy
 			for _, e := range l.Endpoints {
 				switch {
 				case e.URL != "":
@@ -462,25 +469,38 @@ func cmdCreate(args []string) error {
 		return err
 	}
 	// Several apps at once, all or nothing: the file holds a list of app
-	// settings (or {"apps": [...]}), the same bodies `create pod` takes.
+	// settings (or {"apps": [...]}), the same bodies `create pod` takes, and
+	// the databases to make with them ({"apps": [...], "databases": [...]},
+	// each what `create storage` takes, a password optional).
 	if kind == "apps" {
 		var list []map[string]any
+		var dbs []map[string]any
 		if err := json.Unmarshal(raw, &list); err != nil {
 			var wrapped struct {
-				Apps []map[string]any `json:"apps"`
+				Apps      []map[string]any `json:"apps"`
+				Databases []map[string]any `json:"databases"`
 			}
 			if err := json.Unmarshal(raw, &wrapped); err != nil || len(wrapped.Apps) == 0 {
-				return fmt.Errorf("%s should hold a list of apps, or {\"apps\": [...]}", *file)
+				return fmt.Errorf("%s should hold a list of apps, or {\"apps\": [...], \"databases\": [...]}", *file)
 			}
-			list = wrapped.Apps
+			list, dbs = wrapped.Apps, wrapped.Databases
+		}
+		body := map[string]any{"apps": list}
+		if len(dbs) > 0 {
+			body["databases"] = dbs
 		}
 		var out struct {
-			Created []string `json:"created"`
+			Created   []string `json:"created"`
+			Databases []string `json:"databases"`
 		}
-		if err := call("POST", "/v1/workloads", map[string]any{"apps": list}, &out); err != nil {
+		if err := call("POST", "/v1/workloads", body, &out); err != nil {
 			return err
 		}
-		return print(map[string]any{"created": out.Created})
+		answer := map[string]any{"created": out.Created}
+		if len(out.Databases) > 0 {
+			answer["databases"] = out.Databases
+		}
+		return print(answer)
 	}
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
@@ -495,35 +515,215 @@ func cmdCreate(args []string) error {
 	return print(map[string]any{"created": body["id"], "type": kind})
 }
 
-// createFromTemplate makes a resource from a saved template: its settings, a
-// new id, and a file with what is this resource's own (a login, env values).
+// templateBodyKeys are what a create from a template takes besides the new
+// id: the secrets the template left out. Anything else in -f would be
+// dropped without a word, so it is refused instead.
+var templateBodyKeys = map[string]bool{
+	"secretEnv": true, "imagePassword": true, "gitToken": true, "portPasswords": true,
+	"credentials": true, "services": true,
+}
+
+// createFromTemplate makes a resource from a saved template (a Composable App
+// from a stack template, with its databases): the new id, and the secrets the
+// template left out, from -f, --secret PATH=VALUE and --secret-env PATH=VAR.
 func createFromTemplate(args []string) error {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	ref := fs.String("template", "", "a saved template's id or name")
-	id := fs.String("id", "", "the new resource's id")
-	file := fs.String("f", "", "a JSON file with settings to add or change, such as a machine's credentials")
+	id := fs.String("id", "", "the new resource's id (a Composable App's name)")
+	name := fs.String("name", "", "the same as --id")
+	file := fs.String("f", "", `a JSON file with the secrets: {"secretEnv": {"API_KEY": "…"}, "credentials": {…}, "services": {…}}`)
+	var secrets, secretEnvs repeated
+	fs.Var(&secrets, "secret", "a secret the template needs, PATH=VALUE (repeatable): API_KEY=…, imagePassword=…, credentials.password=…, portPasswords.http.alice=…, services.web.secretEnv.API_KEY=…")
+	fs.Var(&secretEnvs, "secret-env", "the same, with the value read from an environment variable: PATH=VAR (repeatable)")
 	_ = fs.Parse(args)
+	if *id == "" {
+		*id = *name
+	}
 	if *ref == "" || *id == "" {
 		return fmt.Errorf("pass --template T and --id NEW")
 	}
-	extra := map[string]any{}
+	t, err := findTemplate(*ref)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{}
 	if *file != "" {
 		raw, err := os.ReadFile(*file)
 		if err != nil {
 			return err
 		}
-		if err := json.Unmarshal(raw, &extra); err != nil {
+		if err := json.Unmarshal(raw, &body); err != nil {
 			return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
 		}
+		for k := range body {
+			switch {
+			case !templateBodyKeys[k]:
+				return fmt.Errorf("%s: %q can't be given here — a create from a template takes only the secrets it needs "+
+					"(secretEnv, imagePassword, gitToken, portPasswords, credentials, services); change settings after, with livellm set %s -f", *file, k, *id)
+			case t.Kind == "stack" && k != "services":
+				return fmt.Errorf("%s: %s is a Composable App's template: each service's secrets go under services.<name>.%s", *file, t.Name, k)
+			case t.Kind != "stack" && k == "services":
+				return fmt.Errorf("%s: services is for a Composable App's template; %s is a %s", *file, t.Name, t.Kind)
+			}
+		}
 	}
-	kind, body, err := fromTemplate(*ref, *id, extra)
-	if err != nil {
+	given := make([]string, 0, len(secrets)+len(secretEnvs))
+	given = append(given, secrets...)
+	for _, s := range secretEnvs {
+		path, env, ok := strings.Cut(s, "=")
+		if !ok || path == "" || env == "" {
+			return fmt.Errorf("--secret-env takes PATH=VAR (the variable holding the value), got %q", s)
+		}
+		v := os.Getenv(env)
+		if v == "" {
+			return fmt.Errorf("--secret-env %s: the variable %s is empty or unset", path, env)
+		}
+		given = append(given, path+"="+v)
+	}
+	for _, s := range given {
+		path, value, ok := strings.Cut(s, "=")
+		if !ok || path == "" {
+			return fmt.Errorf("--secret takes PATH=VALUE, got %q", strings.SplitN(s, "=", 2)[0])
+		}
+		if err := putSecret(body, t, path, value); err != nil {
+			return err
+		}
+	}
+	if t.Kind == "stack" {
+		body["name"] = *id
+	} else {
+		body["id"] = *id
+	}
+	var out map[string]any
+	if err := call("POST", "/v1/templates/"+url.PathEscape(t.ID)+"/create", body, &out); err != nil {
+		var p *problem
+		if asProblem(err, &p) && len(p.Missing) > 0 && p.Next == "" {
+			p.Next = "add " + secretFlags(p.Missing)
+		}
 		return err
 	}
-	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
-		return err
+	answer := map[string]any{"template": t.Name, "type": t.Kind, "created": out["created"]}
+	if t.Kind != "stack" {
+		answer["created"] = *id
 	}
-	return print(map[string]any{"created": *id, "type": kind, "template": *ref})
+	if dbs, ok := out["databases"]; ok {
+		answer["databases"] = dbs
+	}
+	return print(answer)
+}
+
+// putSecret puts one --secret into the create body. A path is what a refusal
+// lists as missing (secretEnv.API_KEY, imagePassword, credentials.password,
+// portPasswords.http.alice, services.web.secretEnv.API_KEY…), and a bare name
+// is a secret env value. In a Composable App's template every secret belongs
+// to a service: a path without services.<name> goes to each service that has
+// that secret env name, or to the only service there is.
+func putSecret(body map[string]any, t *template, path, value string) error {
+	parts := strings.Split(path, ".")
+	switch {
+	case len(parts) == 1 && (path == "imagePassword" || path == "gitToken"):
+	case len(parts) == 1 && templateBodyKeys[path]:
+		return fmt.Errorf("--secret %s: say what in it, e.g. %s", path, map[string]string{
+			"secretEnv": "secretEnv.API_KEY=…", "portPasswords": "portPasswords.http.alice=…",
+			"credentials": "credentials.password=…", "services": "services.web.secretEnv.API_KEY=…"}[path])
+	case len(parts) == 1:
+		parts = []string{"secretEnv", path}
+	}
+	if t.Kind != "stack" {
+		if parts[0] == "services" {
+			return fmt.Errorf("--secret %s: %s isn't a Composable App's template; leave out services.<name>", path, t.Name)
+		}
+		return setPath(body, parts, value)
+	}
+	if parts[0] == "services" {
+		return setPath(body, parts, value)
+	}
+	var svcs []string
+	if parts[0] == "secretEnv" && len(parts) == 2 {
+		if svcs = servicesWithSecret(t, parts[1]); len(svcs) == 0 {
+			return fmt.Errorf("--secret %s: no service of the template %s has a secret %s (livellm template show %s)", path, t.Name, parts[1], t.ID)
+		}
+	} else if all := stackServices(t); len(all) == 1 {
+		svcs = all
+	} else {
+		return fmt.Errorf("--secret %s: say which service it is for, services.<name>.%s (the template's services: %s)", path, path, strings.Join(all, ", "))
+	}
+	for _, svc := range svcs {
+		if err := setPath(body, append([]string{"services", svc}, parts...), value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stackServices are the names of a stack template's services.
+func stackServices(t *template) []string {
+	st, _ := t.Config["stack"].(map[string]any)
+	list, _ := st["services"].([]any)
+	var out []string
+	for _, raw := range list {
+		sv, _ := raw.(map[string]any)
+		if n, _ := sv["name"].(string); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// servicesWithSecret are the services of a stack template that have the secret env name.
+func servicesWithSecret(t *template, name string) []string {
+	st, _ := t.Config["stack"].(map[string]any)
+	list, _ := st["services"].([]any)
+	var out []string
+	for _, raw := range list {
+		sv, _ := raw.(map[string]any)
+		pod, _ := sv["pod"].(map[string]any)
+		env, _ := pod["secretEnv"].([]any)
+		for _, e := range env {
+			if m, _ := e.(map[string]any); m["name"] == name {
+				if n, _ := sv["name"].(string); n != "" {
+					out = append(out, n)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// setPath sets body[a][b]…= value, making the objects on the way.
+func setPath(body map[string]any, parts []string, value string) error {
+	m := body
+	for i, k := range parts {
+		if k == "" {
+			return fmt.Errorf("--secret %s: an empty name in the path", strings.Join(parts, "."))
+		}
+		if i == len(parts)-1 {
+			m[k] = value
+			return nil
+		}
+		next, ok := m[k].(map[string]any)
+		if !ok {
+			if _, taken := m[k]; taken {
+				return fmt.Errorf("--secret %s: %s already holds a value", strings.Join(parts, "."), strings.Join(parts[:i+1], "."))
+			}
+			next = map[string]any{}
+			m[k] = next
+		}
+		m = next
+	}
+	return nil
+}
+
+// secretFlags spells the secrets a template still needs as the flags that give them.
+func secretFlags(missing []string) string {
+	flags := make([]string, 0, len(missing))
+	for _, m := range missing {
+		if name, ok := strings.CutPrefix(m, "secretEnv."); ok && !strings.Contains(name, ".") {
+			m = name
+		}
+		flags = append(flags, "--secret "+m+"=…")
+	}
+	return strings.Join(flags, " ")
 }
 
 func cmdRemove(args []string) error {
@@ -533,14 +733,36 @@ func cmdRemove(args []string) error {
 	}
 	fs := flag.NewFlagSet("rm", flag.ExitOnError)
 	yes := fs.Bool("y", false, "don't ask")
+	withDBs := fs.Bool("with-databases", false, "an app: also delete the databases made with it that no other app uses")
+	force := fs.Bool("force", false, "delete even though another app's settings name it (an app that links it or waits for it has to change first)")
 	_ = fs.Parse(rest)
-	if !*yes && !confirm(fmt.Sprintf("Delete %s and its disk? This can't be undone.", id)) {
+	question := fmt.Sprintf("Delete %s and its disk? This can't be undone.", id)
+	if *withDBs {
+		question = fmt.Sprintf("Delete %s and its disk, and the databases made with it that no other app uses, with their data? This can't be undone.", id)
+	}
+	if !*yes && !confirm(question) {
 		return fmt.Errorf("nothing was deleted")
 	}
-	if err := call("DELETE", "/v1/workloads/"+url.PathEscape(id), nil, nil); err != nil {
+	q := url.Values{}
+	if *withDBs {
+		q.Set("withDatabases", "true")
+	}
+	if *force {
+		q.Set("force", "true")
+	}
+	path := "/v1/workloads/" + url.PathEscape(id)
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out map[string]any
+	if err := call("DELETE", path, nil, &out); err != nil {
 		return err
 	}
-	return print(map[string]any{"deleted": id})
+	answer := map[string]any{"deleted": id}
+	if dbs, ok := out["databases"]; ok {
+		answer["databases"] = dbs
+	}
+	return print(answer)
 }
 
 func cmdRestart(args []string) error {

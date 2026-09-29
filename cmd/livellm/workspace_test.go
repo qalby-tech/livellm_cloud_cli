@@ -28,7 +28,15 @@ func TestWorkspaceRequests(t *testing.T) {
 			_, _ = w.Write([]byte(`{"templates":[
 				{"id":"tpl_1","name":"small box","kind":"vm-ubuntu","config":{"vm":{"cpus":2,"memory":"4Gi"}}},
 				{"id":"tpl_2","name":"twin","kind":"pod","config":{"pod":{"image":"nginx"}}},
-				{"id":"tpl_3","name":"twin","kind":"pod","config":{"pod":{"image":"caddy"}}}]}`))
+				{"id":"tpl_3","name":"twin","kind":"pod","config":{"pod":{"image":"caddy"}}},
+				{"id":"tpl_4","name":"shop","kind":"stack","config":{"stack":{"name":"shop","services":[
+				  {"name":"web","id":"shop-web","pod":{"image":"shop","secretEnv":[{"name":"API_KEY","required":true}]}},
+				  {"name":"worker","id":"shop-worker","pod":{"image":"shop","secretEnv":[{"name":"API_KEY","required":true}],
+				    "imageAuth":{"registry":"r","username":"u","required":true}}}],
+				  "databases":[{"name":"db","id":"shop-db","storage":{"engine":"postgres"}}]}}},
+				{"id":"tpl_5","name":"solo","kind":"stack","config":{"stack":{"name":"solo","services":[
+				  {"name":"solo","id":"solo","pod":{"image":"x","imageAuth":{"registry":"r","username":"u","required":true}}}]}}},
+				{"id":"tpl_6","name":"api","kind":"pod","config":{"pod":{"image":"api","secretEnv":[{"name":"S","required":true}]}}}]}`))
 			return
 		case r.URL.Path == "/v1/workspace":
 			w.Header().Set("Content-Type", "application/json")
@@ -67,6 +75,15 @@ func TestWorkspaceRequests(t *testing.T) {
 	_ = os.WriteFile(extra, []byte(`{"credentials":{"username":"me","password":"p"}}`), 0o600)
 	settings := filepath.Join(dir, "settings.json")
 	_ = os.WriteFile(settings, []byte(`{"id":"ignored","cpu":"2","memory":"4Gi"}`), 0o600)
+	stack := filepath.Join(dir, "stack.json")
+	_ = os.WriteFile(stack, []byte(`{"apps":[{"id":"shop-web","image":"shop","databases":[{"id":"shop-db","env":{"DATABASE_URL":"url"}}]}],
+		"databases":[{"id":"shop-db","engine":"postgres"}]}`), 0o600)
+	stackSecrets := filepath.Join(dir, "stack-secrets.json")
+	_ = os.WriteFile(stackSecrets, []byte(`{"services":{"worker":{"imagePassword":"pw"}}}`), 0o600)
+	withEnv := filepath.Join(dir, "with-env.json")
+	_ = os.WriteFile(withEnv, []byte(`{"secretEnv":{"S":"v"},"env":[{"name":"A","value":"1"}]}`), 0o600)
+	t.Setenv("SHOP_API_KEY", "from-env")
+	t.Setenv("EMPTY_VAR", "")
 	stdout := os.Stdout
 	devnull, _ := os.Open(os.DevNull)
 	os.Stdout = devnull
@@ -91,8 +108,8 @@ func TestWorkspaceRequests(t *testing.T) {
 			got{"GET", "/v1/workloads/box/monitor?range=24h", nil}},
 		{"one machine's monitor, its id after the flag", func() error { return cmdMonitoring([]string{"--range", "6h", "box"}) },
 			got{"GET", "/v1/workloads/box/monitor?range=6h", nil}},
-		{"a Browser API as a template, as the console saves it", func() error { return cmdTemplate([]string{"save", "p", "--from", "pool"}) },
-			got{"POST", "/v1/templates", obj(`{"name":"p","kind":"controller","config":{"controller":{"browsers":["a"]}}}`)}},
+		{"a Browser API as a template: LiveLLM reads it", func() error { return cmdTemplate([]string{"save", "p", "--from", "pool"}) },
+			got{"POST", "/v1/templates", obj(`{"name":"p","from":"pool"}`)}},
 		{"api-keys", func() error { return cmdAPIKeys(nil) }, got{"GET", "/v1/keys", nil}},
 		{"api-keys create", func() error { return cmdAPIKeys([]string{"create", "ci"}) },
 			got{"POST", "/v1/keys", obj(`{"name":"ci"}`)}},
@@ -125,20 +142,50 @@ func TestWorkspaceRequests(t *testing.T) {
 			got{"DELETE", "/v1/workloads/box/backups/snap-1", nil}},
 		{"backups describe", func() error { return cmdBackups([]string{"describe", "box", "snap-1", "before the upgrade"}) },
 			got{"PATCH", "/v1/workloads/box/backups/snap-1", obj(`{"description":"before the upgrade"}`)}},
-		{"template save from a machine: no login", func() error {
+		{"template save from a machine: LiveLLM reads it, without the login", func() error {
 			return cmdTemplate([]string{"save", "small box", "--from", "box", "--description", "for tests"})
-		}, got{"POST", "/v1/templates", obj(`{"name":"small box","description":"for tests","kind":"vm-ubuntu","config":{"vm":{"cpus":2}}}`)}},
-		{"template save from an app: no env, no pull login, no build", func() error {
-			return cmdTemplate([]string{"save", "web", "--from", "web"})
-		}, got{"POST", "/v1/templates", obj(`{"name":"web","kind":"pod","config":{"pod":{"image":"nginx","source":{"git":{"url":"https://g/x"}}}}}`)}},
+		}, got{"POST", "/v1/templates", obj(`{"name":"small box","description":"for tests","from":"box"}`)}},
+		{"template save from an app of a Composable App: LiveLLM saves the whole app", func() error {
+			return cmdTemplate([]string{"save", "shop", "--from", "shop-web"})
+		}, got{"POST", "/v1/templates", obj(`{"name":"shop","from":"shop-web"}`)}},
+		{"template save of a Composable App from a file", func() error {
+			return cmdTemplate([]string{"save", "shop", "--kind", "stack", "-f", settings})
+		}, got{"POST", "/v1/templates", obj(`{"name":"shop","kind":"stack","config":{"stack":{"cpu":"2","memory":"4Gi"}}}`)}},
 		{"template save from a file", func() error {
 			return cmdTemplate([]string{"save", "big browser", "--kind", "browser", "-f", settings})
 		}, got{"POST", "/v1/templates", obj(`{"name":"big browser","kind":"browser","config":{"browser":{"cpu":"2","memory":"4Gi"}}}`)}},
 		{"template rm by name", func() error { return cmdTemplate([]string{"rm", "small box", "-y"}) },
 			got{"DELETE", "/v1/templates/tpl_1", nil}},
-		{"create from a template", func() error {
+		{"create from a template: the new id and the login", func() error {
 			return cmdCreate([]string{"--template", "small box", "--id", "box2", "-f", extra})
-		}, got{"POST", "/v1/workloads/vm-ubuntu", obj(`{"id":"box2","cpus":2,"memory":"4Gi","credentials":{"username":"me","password":"p"}}`)}},
+		}, got{"POST", "/v1/templates/tpl_1/create", obj(`{"id":"box2","credentials":{"username":"me","password":"p"}}`)}},
+		{"create from a template: a login from --secret", func() error {
+			return cmdCreate([]string{"--template", "tpl_1", "--id", "box3", "--secret", "credentials.username=me", "--secret", "credentials.password=a=b"})
+		}, got{"POST", "/v1/templates/tpl_1/create", obj(`{"id":"box3","credentials":{"username":"me","password":"a=b"}}`)}},
+		{"create from an app's template: a bare name is a secret env value", func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "api2", "--secret", "S=v", "--secret", "imagePassword=x",
+				"--secret", "portPasswords.http.alice=pw", "--secret", "gitToken=t"})
+		}, got{"POST", "/v1/templates/tpl_6/create", obj(`{"id":"api2","secretEnv":{"S":"v"},"imagePassword":"x","portPasswords":{"http":{"alice":"pw"}},"gitToken":"t"}`)}},
+		{"create a Composable App from its template: a secret goes to every service that has it", func() error {
+			return cmdCreate([]string{"--template", "shop", "--id", "shop2", "--secret", "API_KEY=k", "-f", stackSecrets})
+		}, got{"POST", "/v1/templates/tpl_4/create", obj(`{"name":"shop2","services":{
+			"web":{"secretEnv":{"API_KEY":"k"}},"worker":{"secretEnv":{"API_KEY":"k"},"imagePassword":"pw"}}}`)}},
+		{"create a Composable App from its template: one service's secret, from a variable", func() error {
+			return cmdCreate([]string{"--template", "shop", "--name", "shop3", "--secret", "services.web.secretEnv.API_KEY=w",
+				"--secret-env", "services.worker.secretEnv.API_KEY=SHOP_API_KEY", "--secret", "services.worker.imagePassword=pw"})
+		}, got{"POST", "/v1/templates/tpl_4/create", obj(`{"name":"shop3","services":{
+			"web":{"secretEnv":{"API_KEY":"w"}},"worker":{"secretEnv":{"API_KEY":"from-env"},"imagePassword":"pw"}}}`)}},
+		{"create an app of one service from its template: a secret goes to that service", func() error {
+			return cmdCreate([]string{"--template", "solo", "--id", "solo2", "--secret", "imagePassword=pw"})
+		}, got{"POST", "/v1/templates/tpl_5/create", obj(`{"name":"solo2","services":{"solo":{"imagePassword":"pw"}}}`)}},
+		{"create apps with their databases, linked", func() error { return cmdCreate([]string{"apps", "-f", stack}) },
+			got{"POST", "/v1/workloads", obj(`{"apps":[{"id":"shop-web","image":"shop","databases":[{"id":"shop-db","env":{"DATABASE_URL":"url"}}]}],
+				"databases":[{"id":"shop-db","engine":"postgres"}]}`)}},
+		{"rm", func() error { return cmdRemove([]string{"web", "-y"}) }, got{"DELETE", "/v1/workloads/web", nil}},
+		{"rm an app with its databases", func() error { return cmdRemove([]string{"web", "--with-databases", "-y"}) },
+			got{"DELETE", "/v1/workloads/web?withDatabases=true", nil}},
+		{"rm with force", func() error { return cmdRemove([]string{"web", "-y", "--force", "--with-databases"}) },
+			got{"DELETE", "/v1/workloads/web?force=true&withDatabases=true", nil}},
 		{"rdp", func() error { return cmdRDP([]string{"win", "--ttl", "8h", "-o", filepath.Join(dir, "win.rdp")}) },
 			got{"GET", "/v1/workloads/win/rdp-file?ttl=8h", nil}},
 		{"screenshot", func() error {
@@ -169,6 +216,27 @@ func TestWorkspaceRequests(t *testing.T) {
 		"api-keys set without a list":    func() error { return cmdAPIKeys([]string{"set", "key_1"}) },
 		"plan metered maybe":             func() error { return cmdPlan([]string{"metered", "maybe"}) },
 		"create from a template, no id":  func() error { return cmdCreate([]string{"--template", "small box"}) },
+		"create from a template with settings in -f": func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "x", "-f", withEnv})
+		},
+		"a Composable App's secret no service has": func() error {
+			return cmdCreate([]string{"--template", "shop", "--id", "x", "--secret", "NOPE=1"})
+		},
+		"a Composable App's image password, no service named": func() error {
+			return cmdCreate([]string{"--template", "shop", "--id", "x", "--secret", "imagePassword=1"})
+		},
+		"a service's secret on an app's template": func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "x", "--secret", "services.web.secretEnv.S=1"})
+		},
+		"a secret from an empty variable": func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "x", "--secret-env", "S=EMPTY_VAR"})
+		},
+		"a secret without a value": func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "x", "--secret", "S"})
+		},
+		"a whole block as one secret": func() error {
+			return cmdCreate([]string{"--template", "api", "--id", "x", "--secret", "credentials=1"})
+		},
 	}
 	for name, run := range refused {
 		last = got{}
@@ -273,5 +341,54 @@ func TestWait(t *testing.T) {
 	phase, stopped = "Stopped", false
 	if err := cmdWait([]string{"db", "--timeout", "1ns"}); err == nil || strings.Contains(err.Error(), "is stopped") {
 		t.Errorf("a resource just started: %v, want the timeout", err)
+	}
+}
+
+// A create from a template refused for the secrets it still needs says which
+// flags give them; one that works prints what was made, databases too.
+func TestTemplateCreateAnswers(t *testing.T) {
+	missing := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v1/templates":
+			_, _ = w.Write([]byte(`{"templates":[{"id":"tpl_4","name":"shop","kind":"stack","config":{"stack":{"name":"shop","services":[{"name":"web","id":"shop-web","pod":{}}]}}}]}`))
+		case missing:
+			w.WriteHeader(422)
+			_, _ = w.Write([]byte(`{"error":"the template needs these secrets to create from it: services.web.secretEnv.API_KEY, secretEnv.S","missing":["services.web.secretEnv.API_KEY","secretEnv.S"]}`))
+		default:
+			w.WriteHeader(202)
+			_, _ = w.Write([]byte(`{"tenant":"acme","created":["shop2-web"],"databases":["shop2-db"],"status":"updated"}`))
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	stdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = stdout }()
+
+	err := cmdCreate([]string{"--template", "shop", "--id", "shop2"})
+	var p *problem
+	if !asProblem(err, &p) || p.Status != 422 {
+		t.Fatalf("want the 422, got %v", err)
+	}
+	if want := "add --secret services.web.secretEnv.API_KEY=… --secret S=…"; p.Next != want {
+		t.Errorf("next: %q, want %q", p.Next, want)
+	}
+	missing = false
+	if err := cmdCreate([]string{"--template", "shop", "--id", "shop2"}); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	raw, _ := io.ReadAll(r)
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("printed %q: %v", raw, err)
+	}
+	want := map[string]any{"template": "shop", "type": "stack", "created": []any{"shop2-web"}, "databases": []any{"shop2-db"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("printed %v, want %v", got, want)
 	}
 }

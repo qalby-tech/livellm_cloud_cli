@@ -63,6 +63,43 @@ session (`X-Session-Id`) stays on its browser; `/browsers/agent-2/…` or
 `X-Browser-Id: agent-2` picks one. `set ID -f changes.json` changes only the
 settings the file holds.
 
+An app and its databases in one step, linked:
+
+```sh
+cat > shop.json <<'JSON'
+{
+  "apps": [{
+    "id": "shop-web", "stack": "shop", "hostname": "web", "image": "ghcr.io/acme/shop:1.4",
+    "ports": [{ "name": "http", "port": 3000 }],
+    "secretEnv": [{ "name": "STRIPE_KEY", "value": "sk_live_…" }],
+    "databases": [
+      { "id": "shop-db",    "env": { "DATABASE_URL": "url" } },
+      { "id": "shop-cache", "env": { "REDIS_HOST": "host", "REDIS_PASSWORD": "password" } }
+    ]
+  }],
+  "databases": [
+    { "id": "shop-db",    "engine": "postgres", "storageSize": "10Gi",
+      "backup": { "enabled": true, "mode": "daily", "keepDays": 7 } },
+    { "id": "shop-cache", "engine": "redis", "storageSize": "1Gi" }
+  ]
+}
+JSON
+livellm create apps -f shop.json                  # all of it or none; the passwords are made for you
+livellm ls                                        # shop-web lists its databases, each database usedBy
+livellm template save shop --from shop-web        # the whole app, its databases and links; no secrets
+livellm create --template shop --id shop-2 --secret-env STRIPE_KEY=STRIPE_KEY
+livellm rm shop-2-web --with-databases            # the app, and the databases made with it
+```
+
+A link puts a database's connection details into the app's environment:
+`host`, `port`, `database`, `username`, `password` or `url` (a Redis database
+has no `database` or `username`). The password and the URL are read from the
+database's own login, never written where anyone can read them, and the app
+starts once its databases are up. Links work on an existing app too:
+`set shop-web -f` with `{"pod": {"databases": [...]}}` (the list you send is
+the whole list). A create from a template names the secrets it still needs,
+and the `--secret` flags that give them.
+
 Backups work the same way for machines and databases:
 
 ```sh
@@ -82,7 +119,7 @@ For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
 ```sh
 livellm build web --wait                        # exits 0 once the new build is live, non-zero if it failed
 livellm template save small-box --from box      # a resource's settings, never its logins
-livellm create --template small-box --id box2 -f login.json
+livellm create --template small-box --id box2 --secret credentials.username=me --secret-env credentials.password=BOX_PASSWORD
 livellm activity --object web --limit 20        # what happened to web, newest first
 livellm monitoring                              # up or down, uptime, use, open alerts
 livellm rdp win-lab -o win-lab.rdp              # a Windows machine's Remote Desktop file

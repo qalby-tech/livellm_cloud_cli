@@ -35,6 +35,9 @@ type problem struct {
 	Next   string
 	// Code is the OAuth error code of a refusal from the sign-in endpoints.
 	Code string
+	// Missing are the body paths a create from a template still needs (the
+	// secrets the template left out).
+	Missing []string
 }
 
 func (p *problem) Error() string {
@@ -98,11 +101,12 @@ func send(method, path string, body any) ([]byte, http.Header, error) {
 	if res.StatusCode >= 400 {
 		p := &problem{Status: res.StatusCode, Msg: strings.TrimSpace(string(raw))}
 		var e struct {
-			Error string `json:"error"`
-			Next  string `json:"next"`
+			Error   string   `json:"error"`
+			Next    string   `json:"next"`
+			Missing []string `json:"missing"`
 		}
 		if json.Unmarshal(raw, &e) == nil && e.Error != "" {
-			p.Msg, p.Next = e.Error, e.Next
+			p.Msg, p.Next, p.Missing = e.Error, e.Next, e.Missing
 		}
 		if res.StatusCode == 401 && kind == "signin" {
 			p.Next = "run: livellm login"

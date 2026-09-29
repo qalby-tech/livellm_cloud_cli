@@ -5,6 +5,31 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- Apps and their databases: `create apps -f FILE` takes
+  `{"apps": [...], "databases": [...]}` and makes all of it in one step (a
+  database's password may be left out: the platform makes one); each app
+  links its databases in `databases: [{id, env: {VAR: host|port|database|
+  username|password|url}}]`, the same in `create pod`. The answer lists the
+  `databases` made. `ls` shows an app's `databases` and a database's `usedBy`.
+- `rm ID --with-databases` deletes an app together with the databases made
+  with it that no other app uses, and prints which went and which stayed
+  (`databases: {deleted, kept}`); `--force` deletes what another app's
+  settings still name.
+- `template save NAME --from ID` has LiveLLM read the resource, as the console
+  saves it: an app keeps its plain env values and the names of its secrets;
+  an app of a Composable App (a stack, or made with databases) saves the whole
+  app as kind `stack`, with its databases and links. `--kind stack -f FILE`
+  saves one from a file.
+- `create --template T --id NEW` creates through the template: a Composable
+  App's template makes every service and its databases (with passwords made
+  for them), already linked, `--id` being the app's name. The secrets the
+  template leaves out come from `--secret PATH=VALUE` or `--secret-env
+  PATH=VAR` (a bare name is a secret env value; in a Composable App it goes to
+  every service with that secret), or from `-f FILE` with `secretEnv`,
+  `imagePassword`, `gitToken`, `portPasswords`, `credentials` or `services`.
+  A refusal names the missing ones as the flags to add. **Changed:** `-f` no
+  longer changes a template's settings (`livellm set NEW -f` after does), and
+  a Composable App's answer lists `created` ids.
 - `exec` waits for a long command: a command still going when the call
   answers (after 55 s) keeps going on the machine, and `exec` looks at it
   again until it ends, up to its `--timeout` (the platform stops it then, exit
