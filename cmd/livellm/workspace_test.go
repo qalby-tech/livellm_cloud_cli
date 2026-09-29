@@ -189,8 +189,8 @@ func TestWorkspaceRequests(t *testing.T) {
 		{"rdp", func() error { return cmdRDP([]string{"win", "--ttl", "8h", "-o", filepath.Join(dir, "win.rdp")}) },
 			got{"GET", "/v1/workloads/win/rdp-file?ttl=8h", nil}},
 		{"screenshot", func() error {
-			return cmdScreenshot([]string{"desks", "--desktop", "2", "--width", "640", "-o", filepath.Join(dir, "d.jpg")})
-		}, got{"GET", "/v1/workloads/desks/thumbnail?desktop=2&width=640", nil}},
+			return cmdScreenshot([]string{"desk", "--width", "640", "-o", filepath.Join(dir, "d.jpg")})
+		}, got{"GET", "/v1/workloads/desk/thumbnail?width=640", nil}},
 	}
 	for _, c := range cases {
 		last = got{}

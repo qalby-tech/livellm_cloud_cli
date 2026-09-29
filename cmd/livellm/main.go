@@ -26,10 +26,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm database ID                        a database's instances, live
   livellm logs ID [--lines N]                recent logs, and restarts
   livellm connect ID [--tool TOOL]           how to reach it
-          [--desktop N] [--screen-width PX] [--format png|jpeg]
+          [--screen-width PX] [--format png|jpeg]
   livellm exec ID "COMMAND"                  run a command on a machine (PowerShell on Windows)
-          [--session S] [--timeout N] [--desktop N]   (waits until it ends, up to --timeout)
-  livellm share ID [--control] [--for 1h|24h|7d] [--desktop N]
+          [--session S] [--timeout N]   (waits until it ends, up to --timeout)
+  livellm share ID [--control] [--for 1h|24h|7d]
                                              a link to watch or use a screen
   livellm shares ID                          a screen's open links
   livellm unshare ID LINK                    close a screen link now
@@ -37,7 +37,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm keys                               the workspace's SSH keys
   livellm keys set -f FILE                   replace them (with an API key; a sign-in can't)
   livellm rdp ID [--ttl 8h] [-o FILE]        a Windows or Ubuntu desktop machine's Remote Desktop file
-  livellm screenshot ID [--desktop N] [-o FILE]
+  livellm screenshot ID [--width PX] [-o FILE]
                                              a picture of its screen (JPEG)
   livellm reservations                       machines agents are holding
 

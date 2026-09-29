@@ -496,14 +496,10 @@ func cmdScreenshot(args []string) error {
 		return err
 	}
 	fs := flag.NewFlagSet("screenshot", flag.ExitOnError)
-	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
 	width := fs.Int("width", 0, "its width in pixels, 120 to 960 (default 480)")
 	out := fs.String("o", "", "where to save it (default ID.jpg; - for stdout)")
 	_ = fs.Parse(rest)
 	q := url.Values{}
-	if *desktop >= 0 {
-		q.Set("desktop", strconv.Itoa(*desktop))
-	}
 	if *width > 0 {
 		q.Set("width", strconv.Itoa(*width))
 	}

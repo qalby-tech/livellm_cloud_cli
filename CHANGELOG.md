@@ -5,6 +5,10 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- A Desktop App is one desktop (breaking): `--desktop N` is gone from
+  `connect`, `exec`, `share` and `screenshot`, and `create desktop` takes no
+  `replicas` (more than 1 is refused). Make a Desktop App for each desktop
+  you need.
 - Apps and their databases: `create apps -f FILE` takes
   `{"apps": [...], "databases": [...]}` and makes all of it in one step (a
   database's password may be left out: the platform makes one); each app

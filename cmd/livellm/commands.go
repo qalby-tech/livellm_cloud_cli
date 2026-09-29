@@ -211,16 +211,12 @@ func cmdConnect(args []string) error {
 	}
 	fs := flag.NewFlagSet("connect", flag.ExitOnError)
 	tool := fs.String("tool", "", "cdp, view, api or computer, when a resource offers several")
-	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
 	width := fs.Int("screen-width", 0, "computer: shrink screenshots to this many pixels wide (320-3840)")
 	format := fs.String("format", "", "computer: png or jpeg")
 	_ = fs.Parse(rest)
 	body := map[string]any{}
 	if *tool != "" {
 		body["tool"] = *tool
-	}
-	if *desktop >= 0 {
-		body["desktop"] = *desktop
 	}
 	screen := map[string]any{}
 	if *width > 0 {
@@ -319,14 +315,10 @@ func cmdExec(args []string) error {
 	fs := flag.NewFlagSet("exec", flag.ExitOnError)
 	session := fs.String("session", "", "commands in the same session share a working folder")
 	timeout := fs.Int("timeout", 60, "seconds, up to 600")
-	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
 	_ = fs.Parse(rest)
 	body := map[string]any{"command": command, "timeout": *timeout, "wait": execPoll}
 	if *session != "" {
 		body["session"] = *session
-	}
-	if *desktop >= 0 {
-		body["desktop"] = *desktop
 	}
 	// Each call waits up to execPoll seconds for the command; getting onto
 	// the computer comes on top of that.
@@ -392,7 +384,6 @@ func cmdShare(args []string) error {
 	fs := flag.NewFlagSet("share", flag.ExitOnError)
 	control := fs.Bool("control", false, "let whoever opens it use the screen, not only watch")
 	life := fs.String("for", "", "1h, 24h or 7d (default 24h)")
-	desktop := fs.Int("desktop", -1, "for a Desktop App: which desktop, from 0")
 	_ = fs.Parse(rest)
 	body := map[string]any{"mode": "view"}
 	if *control {
@@ -400,9 +391,6 @@ func cmdShare(args []string) error {
 	}
 	if *life != "" {
 		body["for"] = *life
-	}
-	if *desktop >= 0 {
-		body["desktop"] = *desktop
 	}
 	var out map[string]any
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(id)+"/shares", body, &out); err != nil {

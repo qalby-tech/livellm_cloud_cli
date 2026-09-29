@@ -41,17 +41,17 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		want got
 	}{
 		{"exec", func() error {
-			return cmdExec([]string{"box", "uname -a", "--session", "s1", "--timeout", "120", "--desktop", "0"})
+			return cmdExec([]string{"box", "uname -a", "--session", "s1", "--timeout", "120"})
 		}, got{"POST", "/v1/workloads/box/exec", map[string]any{
-			"command": "uname -a", "session": "s1", "timeout": float64(120), "desktop": float64(0), "wait": float64(55)}}},
+			"command": "uname -a", "session": "s1", "timeout": float64(120), "wait": float64(55)}}},
 		{"exec defaults", func() error { return cmdExec([]string{"box", "ls"}) },
 			got{"POST", "/v1/workloads/box/exec", map[string]any{"command": "ls", "timeout": float64(60), "wait": float64(55)}}},
 		{"share view", func() error { return cmdShare([]string{"box"}) },
 			got{"POST", "/v1/workloads/box/shares", map[string]any{"mode": "view"}}},
 		{"share control", func() error {
-			return cmdShare([]string{"desks", "--control", "--for", "7d", "--desktop", "2"})
-		}, got{"POST", "/v1/workloads/desks/shares", map[string]any{
-			"mode": "control", "for": "7d", "desktop": float64(2)}}},
+			return cmdShare([]string{"desk", "--control", "--for", "7d"})
+		}, got{"POST", "/v1/workloads/desk/shares", map[string]any{
+			"mode": "control", "for": "7d"}}},
 		{"shares", func() error { return cmdShares([]string{"box"}) },
 			got{"GET", "/v1/workloads/box/shares", nil}},
 		{"unshare", func() error { return cmdUnshare([]string{"box", "sh1"}) },
@@ -59,9 +59,9 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		{"release", func() error { return cmdRelease([]string{"box"}) },
 			got{"DELETE", "/v1/workloads/box/reservation", nil}},
 		{"connect a desktop", func() error {
-			return cmdConnect([]string{"desks", "--tool", "computer", "--desktop", "1", "--screen-width", "1024", "--format", "jpeg"})
-		}, got{"POST", "/v1/workloads/desks/connect", map[string]any{
-			"tool": "computer", "desktop": float64(1),
+			return cmdConnect([]string{"desk", "--tool", "computer", "--screen-width", "1024", "--format", "jpeg"})
+		}, got{"POST", "/v1/workloads/desk/connect", map[string]any{
+			"tool": "computer",
 			"screen": map[string]any{"width": float64(1024), "format": "jpeg"}}}},
 	}
 	for _, c := range cases {
