@@ -33,6 +33,8 @@ type problem struct {
 	Status int
 	Msg    string
 	Next   string
+	// Code is the OAuth error code of a refusal from the sign-in endpoints.
+	Code string
 }
 
 func (p *problem) Error() string {
@@ -210,7 +212,7 @@ func form(path string, values url.Values, out any) error {
 		if msg == "" {
 			msg = strings.TrimSpace(string(raw))
 		}
-		return &problem{Status: res.StatusCode, Msg: msg}
+		return &problem{Status: res.StatusCode, Msg: msg, Code: e.Error}
 	}
 	if out == nil {
 		return nil

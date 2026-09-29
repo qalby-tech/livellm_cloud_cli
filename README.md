@@ -6,7 +6,7 @@ from a terminal.
 ```sh
 go install github.com/qalby-tech/livellm_cloud_cli/cmd/livellm@latest
 
-livellm login          # opens a link; press Allow in the console
+livellm login --wait   # prints a link; press Allow in the console
 livellm ls             # what you have
 livellm logs web       # why something isn't working
 livellm connect shop   # how to reach it
@@ -98,6 +98,13 @@ person gave it the billing permission on the console's Keys page.
 `login` asks for full access by default: you are the person who owns the
 workspace. `--access use` or `--access create` narrows it, and the console
 shows what is being asked for before you press Allow.
+
+Without `--wait`, `login` prints the link as JSON and returns at once, which
+suits an agent that can't sit and wait: give the person the link, and once they
+have pressed Allow, run `login` again to finish the same sign-in (it waits up to
+a minute, then says it is still waiting). A link that ran out or was denied is
+replaced by a new one. The started sign-in is kept next to the credentials, in
+`credentials.pending.json`, until then.
 
 It is one binary with no dependencies beyond Go's standard library, and it
 talks to the same public API as everything else. `LIVELLM_API_KEY` works

@@ -15,63 +15,6 @@ import (
 // What the commands do. Each one is a call or two to the public API; the
 // printing is what makes it a tool rather than curl.
 
-func cmdLogin(args []string) error {
-	fs := flag.NewFlagSet("login", flag.ExitOnError)
-	access := fs.String("access", "full", "how far this sign-in reaches: use, create or full")
-	_ = fs.Parse(args)
-
-	name := "livellm on " + hostname()
-	var start struct {
-		DeviceCode string `json:"device_code"`
-		UserCode   string `json:"user_code"`
-		Verify     string `json:"verification_uri_complete"`
-		Interval   int    `json:"interval"`
-		ExpiresIn  int    `json:"expires_in"`
-	}
-	if err := form("/v1/oauth/device/code", url.Values{
-		"client_name": {name}, "scope": {*access},
-	}, &start); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Open this and press Allow:\n\n  %s\n\n(code %s)\nWaiting…\n",
-		start.Verify, start.UserCode)
-
-	interval := start.Interval
-	if interval < 1 {
-		interval = 5
-	}
-	deadline := time.Now().Add(time.Duration(start.ExpiresIn) * time.Second)
-	for time.Now().Before(deadline) {
-		time.Sleep(time.Duration(interval) * time.Second)
-		var out tokenAnswer
-		err := form("/v1/oauth/token", url.Values{
-			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-			"device_code": {start.DeviceCode},
-		}, &out)
-		if err == nil {
-			c := out.creds()
-			if err := saveCreds(c); err != nil {
-				return err
-			}
-			return print(map[string]any{
-				"signedIn": true, "workspace": c.Workspace, "access": c.Access,
-			})
-		}
-		var p *problem
-		if asProblem(err, &p) {
-			switch {
-			case strings.Contains(p.Msg, "waiting"), strings.Contains(p.Msg, "pending"):
-				continue
-			case strings.Contains(p.Msg, "poll"), strings.Contains(p.Msg, "slow"):
-				interval += 5
-				continue
-			}
-		}
-		return err
-	}
-	return fmt.Errorf("nobody allowed it in time — run livellm login again")
-}
-
 func cmdLogout([]string) error {
 	c, _ := loadCreds()
 	if c != nil && c.RefreshToken != "" {

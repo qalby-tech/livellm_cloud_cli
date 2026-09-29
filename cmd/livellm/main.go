@@ -1,8 +1,9 @@
 // livellm — the command line for LiveLLM Cloud.
 //
 // One binary, the standard library only, and the same public API the console
-// and the agent skill use. Signing in is the device flow: the command prints a
-// link, you press Allow in the console, and the sign-in is saved for next time.
+// and the agent skill use. Signing in is the device flow: `login` prints a link
+// and returns, you press Allow in the console, and `login` again saves the
+// sign-in for next time (`login --wait` does both in one call).
 package main
 
 import (
@@ -13,7 +14,8 @@ import (
 
 const usage = `livellm — your machines, browsers, apps and databases.
 
-  livellm login [--access use|create|full]   sign in (prints a link to allow)
+  livellm login [--access use|create|full]   sign in: prints a link to allow and returns;
+          [--wait]                           run it again to finish (--wait: stay until allowed)
   livellm logout                             end this sign-in
   livellm whoami                             workspace, plan and usage
 

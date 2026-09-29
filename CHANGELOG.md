@@ -3,6 +3,16 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## Unreleased
+
+- `login` signs in in two calls: the first prints the link as JSON
+  (`signedIn: false`, `link`, `code`, `expiresAt`) and returns at once; once
+  the link is allowed, `login` again finishes the same sign-in, waiting up to a
+  minute and then saying it is still waiting (exit 4). A link that ran out or
+  was denied is replaced by a new one. The started sign-in is kept in
+  `credentials.pending.json` next to the credentials. `login --wait` is the
+  one-call form, for a person at a terminal.
+
 ## 0.2.0
 
 - `build ID --wait`: waits until the build it started is live and exits 0, or
