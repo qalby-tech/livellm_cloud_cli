@@ -40,6 +40,11 @@ platform and attaches them to the GitHub release.
   A refusal names the missing ones as the flags to add. **Changed:** `-f` no
   longer changes a template's settings (`livellm set NEW -f` after does), and
   a Composable App's answer lists `created` ids.
+- Older versions: 0.2.0 and before build the resource from a template's
+  settings themselves. A template saved now keeps its secrets as names only
+  (and a Composable App's as kind `stack`), so `create --template` there is
+  refused (`value required`, or an unknown kind). Update to create from one;
+  templates saved before still work there.
 - `exec` waits for a long command: a command still going when the call
   answers (after 55 s) keeps going on the machine, and `exec` looks at it
   again until it ends, up to its `--timeout` (the platform stops it then, exit
