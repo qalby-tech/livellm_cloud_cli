@@ -10,7 +10,8 @@ platform and attaches them to the GitHub release.
   database's password may be left out: the platform makes one); each app
   links its databases in `databases: [{id, env: {VAR: host|port|database|
   username|password|url}}]`, the same in `create pod`. The answer lists the
-  `databases` made. `ls` shows an app's `databases` and a database's `usedBy`.
+  `databases` made. `ls` shows an app's links (`databases`, as its settings
+  hold them) and the apps a database serves (`usedBy`).
 - `rm ID --with-databases` deletes an app together with the databases made
   with it that no other app uses, and prints which went and which stayed
   (`databases: {deleted, kept}`); `--force` deletes what another app's

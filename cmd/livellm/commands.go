@@ -60,10 +60,10 @@ type resource struct {
 	CreatedBy string   `json:"createdBy,omitempty"`
 	Endpoints []string `json:"endpoints,omitempty"`
 	StopsAt   string   `json:"stopsAt,omitempty"`
-	// Databases are the databases an app is linked to; UsedBy the apps that
-	// link a database or wait for it.
-	Databases []string `json:"databases,omitempty"`
-	UsedBy    []string `json:"usedBy,omitempty"`
+	// Databases are an app's links to databases, as its settings hold them;
+	// UsedBy the apps that link a database or wait for it.
+	Databases []map[string]any `json:"databases,omitempty"`
+	UsedBy    []string         `json:"usedBy,omitempty"`
 }
 
 // statusWarning carries why the live state is missing, when it is: a resource
@@ -80,6 +80,9 @@ func resources() ([]resource, error) {
 				CreatedBy *struct {
 					Name string `json:"name"`
 				} `json:"createdBy"`
+				Pod *struct {
+					Databases []map[string]any `json:"databases"`
+				} `json:"pod"`
 			} `json:"workloads"`
 		} `json:"spec"`
 	}
@@ -93,7 +96,6 @@ func resources() ([]resource, error) {
 			Ready     bool     `json:"ready"`
 			ExpiresAt string   `json:"expiresAt"`
 			SSH       string   `json:"ssh"`
-			Databases []string `json:"databases"`
 			UsedBy    []string `json:"usedBy"`
 			Endpoints []struct {
 				URL  string `json:"url"`
@@ -117,10 +119,13 @@ func resources() ([]resource, error) {
 		if w.CreatedBy != nil && w.CreatedBy.Name != "" {
 			r.CreatedBy = w.CreatedBy.Name
 		}
+		if w.Pod != nil {
+			r.Databases = w.Pod.Databases
+		}
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]
 			r.State, r.Ready, r.StopsAt = strings.ToLower(l.Phase), l.Ready, l.ExpiresAt
-			r.Databases, r.UsedBy = l.Databases, l.UsedBy
+			r.UsedBy = l.UsedBy
 			for _, e := range l.Endpoints {
 				switch {
 				case e.URL != "":

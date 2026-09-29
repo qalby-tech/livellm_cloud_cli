@@ -392,3 +392,33 @@ func TestTemplateCreateAnswers(t *testing.T) {
 		t.Errorf("printed %v, want %v", got, want)
 	}
 }
+
+// ls shows an app's database links as its settings hold them, and the apps a
+// database serves.
+func TestListShowsDatabaseLinks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/workspace" {
+			_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"web","type":"pod","pod":{"databases":[{"id":"db","env":{"DATABASE_URL":"url"}}]}},{"id":"db","type":"storage"}]}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"workloads":[{"id":"web","phase":"Running","databases":["db"]},{"id":"db","phase":"Running","usedBy":["web"]}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	all, err := resources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]resource{}
+	for _, r := range all {
+		by[r.ID] = r
+	}
+	if want := []map[string]any{{"id": "db", "env": map[string]any{"DATABASE_URL": "url"}}}; !reflect.DeepEqual(by["web"].Databases, want) {
+		t.Errorf("web's links: %v, want %v", by["web"].Databases, want)
+	}
+	if !reflect.DeepEqual(by["db"].UsedBy, []string{"web"}) || by["web"].UsedBy != nil || by["db"].Databases != nil {
+		t.Errorf("usedBy: web %v, db %v", by["web"].UsedBy, by["db"].UsedBy)
+	}
+}
