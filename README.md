@@ -10,7 +10,7 @@ livellm login --wait   # prints a link; press Allow in the console
 livellm ls             # what you have
 livellm logs web       # why something isn't working
 livellm connect shop   # how to reach it
-livellm exec box "uname -a"   # run a command on a Linux machine
+livellm exec box "uname -a"   # run a command on a machine (PowerShell on Windows)
 livellm share desk-1   # a link to watch a screen (--control to use it)
 livellm stop web       # stop it, keep its disks; livellm start web runs it again
 ```

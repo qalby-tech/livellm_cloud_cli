@@ -5,6 +5,8 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `exec ID "COMMAND"` runs on Windows machines too, in PowerShell (bash on
+  Linux machines and Desktop Apps); the help says so.
 - `login` signs in in two calls: the first prints the link as JSON
   (`signedIn: false`, `link`, `code`, `expiresAt`) and returns at once; once
   the link is allowed, `login` again finishes the same sign-in, waiting up to a
