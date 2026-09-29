@@ -61,7 +61,7 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		{"connect a desktop", func() error {
 			return cmdConnect([]string{"desk", "--tool", "computer", "--screen-width", "1024", "--format", "jpeg"})
 		}, got{"POST", "/v1/workloads/desk/connect", map[string]any{
-			"tool": "computer",
+			"tool":   "computer",
 			"screen": map[string]any{"width": float64(1024), "format": "jpeg"}}}},
 	}
 	for _, c := range cases {
