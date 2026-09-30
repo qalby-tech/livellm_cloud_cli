@@ -5,6 +5,8 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- README: what `monitoring` prints, how to read open and resolved alerts,
+  and the alert emails.
 - `exec` gives a command 300 seconds by default (was 60), as the platform now
   does; `--timeout` still takes up to 600.
 - `create apps -f FILE --join APP` (or `"join"` in the file) adds the apps

@@ -141,6 +141,13 @@ livellm plan                                    # the plan and what the workspac
 An API key changes the plan (`plan set`, `plan metered on|off`) only when a
 person gave it the billing permission on the console's Keys page.
 
+`monitoring` prints every resource (up or down, since when, uptime over 24
+hours and 7 days, processor, memory and disk use) and the alerts: open ones
+(no `resolvedAt`) first, then the last 7 days' resolved ones. `emailAlerts`
+says whether the workspace owner is emailed when an alert opens and when it is
+over; switch it on the console's Monitoring page. The fields are described at
+[docs.live-llm.com/docs/monitoring](https://docs.live-llm.com/docs/monitoring).
+
 `login` asks for full access by default: you are the person who owns the
 workspace. `--access use` or `--access create` narrows it, and the console
 shows what is being asked for before you press Allow.
