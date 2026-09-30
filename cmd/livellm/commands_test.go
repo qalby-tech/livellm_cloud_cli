@@ -45,7 +45,7 @@ func TestScreenAndCommandRequests(t *testing.T) {
 		}, got{"POST", "/v1/workloads/box/exec", map[string]any{
 			"command": "uname -a", "session": "s1", "timeout": float64(120), "wait": float64(55)}}},
 		{"exec defaults", func() error { return cmdExec([]string{"box", "ls"}) },
-			got{"POST", "/v1/workloads/box/exec", map[string]any{"command": "ls", "timeout": float64(60), "wait": float64(55)}}},
+			got{"POST", "/v1/workloads/box/exec", map[string]any{"command": "ls", "timeout": float64(300), "wait": float64(55)}}},
 		{"share view", func() error { return cmdShare([]string{"box"}) },
 			got{"POST", "/v1/workloads/box/shares", map[string]any{"mode": "view"}}},
 		{"share control", func() error {

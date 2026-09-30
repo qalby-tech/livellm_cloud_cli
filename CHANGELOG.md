@@ -5,6 +5,8 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `exec` gives a command 300 seconds by default (was 60), as the platform now
+  does; `--timeout` still takes up to 600.
 - `create apps -f FILE --join APP` (or `"join"` in the file) adds the apps
   to an app that is already there, in one step: they take its stack, and an
   app on its own gets a stack named after itself (it restarts once).

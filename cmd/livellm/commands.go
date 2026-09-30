@@ -314,7 +314,7 @@ func cmdExec(args []string) error {
 	command, rest := rest[0], rest[1:]
 	fs := flag.NewFlagSet("exec", flag.ExitOnError)
 	session := fs.String("session", "", "commands in the same session share a working folder")
-	timeout := fs.Int("timeout", 60, "seconds, up to 600")
+	timeout := fs.Int("timeout", 300, "seconds it may run before it is stopped, up to 600")
 	_ = fs.Parse(rest)
 	body := map[string]any{"command": command, "timeout": *timeout, "wait": execPoll}
 	if *session != "" {
