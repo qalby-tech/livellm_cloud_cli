@@ -479,3 +479,29 @@ func TestRemoveWhenTheAnswerIsLost(t *testing.T) {
 		t.Error("a delete with no answer and the app still there should be an error")
 	}
 }
+
+// A port password's username may hold dots: --secret keeps it whole, as the
+// refusal's missing path names it.
+func TestSecretPathKeepsAUsernameWhole(t *testing.T) {
+	pod := &template{Name: "blog", Kind: "pod"}
+	stack := &template{Name: "shop", Kind: "stack", Config: map[string]any{"stack": map[string]any{
+		"services": []any{map[string]any{"name": "web", "pod": map[string]any{}}}}}}
+	for _, c := range []struct {
+		t    *template
+		path string
+		want string
+	}{
+		{pod, "portPasswords.http.alice.smith", `{"portPasswords":{"http":{"alice.smith":"pw"}}}`},
+		{pod, "secretEnv.API_KEY", `{"secretEnv":{"API_KEY":"pw"}}`},
+		{stack, "services.web.portPasswords.http.a@b.com", `{"services":{"web":{"portPasswords":{"http":{"a@b.com":"pw"}}}}}`},
+		{stack, "portPasswords.http.alice.smith", `{"services":{"web":{"portPasswords":{"http":{"alice.smith":"pw"}}}}}`},
+	} {
+		body := map[string]any{}
+		if err := putSecret(body, c.t, c.path, "pw"); err != nil {
+			t.Fatalf("%s: %v", c.path, err)
+		}
+		if b, _ := json.Marshal(body); string(b) != c.want {
+			t.Errorf("%s: %s, want %s", c.path, b, c.want)
+		}
+	}
+}

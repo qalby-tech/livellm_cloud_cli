@@ -5,6 +5,9 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `create --template T --secret portPasswords.<port>.<user>=…` keeps a
+  username with dots (`alice.smith`, `a@b.com`) whole; before, it was split
+  and the platform refused the request.
 - `unshare` with a sign-in closes the screen links that sign-in made; another
   agent's, or one made in the console, is refused (403) unless the sign-in
   may change anything (full access). With an API key nothing changes.

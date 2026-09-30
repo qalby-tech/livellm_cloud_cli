@@ -605,6 +605,20 @@ func createFromTemplate(args []string) error {
 	return print(answer)
 }
 
+// secretPath splits a --secret path at its dots, keeping a port password's
+// username whole: a username may hold dots (alice.smith, a@b.com), service,
+// port and secret env names never do.
+func secretPath(path string) []string {
+	parts := strings.Split(path, ".")
+	switch {
+	case parts[0] == "portPasswords":
+		return strings.SplitN(path, ".", 3)
+	case parts[0] == "services" && len(parts) > 2 && parts[2] == "portPasswords":
+		return strings.SplitN(path, ".", 5)
+	}
+	return parts
+}
+
 // putSecret puts one --secret into the create body. A path is what a refusal
 // lists as missing (secretEnv.API_KEY, imagePassword, credentials.password,
 // portPasswords.http.alice, services.web.secretEnv.API_KEY…), and a bare name
@@ -612,7 +626,7 @@ func createFromTemplate(args []string) error {
 // to a service: a path without services.<name> goes to each service that has
 // that secret env name, or to the only service there is.
 func putSecret(body map[string]any, t *template, path, value string) error {
-	parts := strings.Split(path, ".")
+	parts := secretPath(path)
 	switch {
 	case len(parts) == 1 && (path == "imagePassword" || path == "gitToken"):
 	case len(parts) == 1 && templateBodyKeys[path]:
