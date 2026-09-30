@@ -255,6 +255,32 @@ func TestLoginStartsAgainWhenPendingIsStale(t *testing.T) {
 	}
 }
 
+// A sign-in started with other access than the default is finished by a
+// plain login again, as the printed next step says, not replaced.
+func TestLoginAgainKeepsThePendingAccess(t *testing.T) {
+	var allowed atomic.Bool
+	f, _ := signInEnv(t, func(code string, _ int) string {
+		if allowed.Load() && code == "dev-1" {
+			return "allow"
+		}
+		return "pending"
+	})
+	if _, err := stdout(t, func() error { return cmdLogin([]string{"--access", "use"}) }); err != nil {
+		t.Fatal(err)
+	}
+	allowed.Store(true)
+	out, err := stdout(t, func() error { return cmdLogin(nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := printed(t, out); m["signedIn"] != true {
+		t.Errorf("printed %v", m)
+	}
+	if started, _ := f.counts(); started != 1 {
+		t.Errorf("started %d sign-ins", started)
+	}
+}
+
 // --wait is one call: it waits for Allow, slowing down when asked.
 func TestLoginWait(t *testing.T) {
 	f, _ := signInEnv(t, func(_ string, poll int) string {

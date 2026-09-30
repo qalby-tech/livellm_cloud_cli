@@ -88,11 +88,19 @@ func savePending(p *pendingLogin) error {
 
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
-	access := fs.String("access", "full", "how far this sign-in reaches: use, create or full")
+	access := fs.String("access", "full", "how far this sign-in reaches: use, create or full (login again keeps the pending sign-in's)")
 	wait := fs.Bool("wait", false, "wait here until the link is allowed, instead of running login again")
 	_ = fs.Parse(args)
+	explicit := false
+	fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "access" })
 
 	p := loadPending()
+	// Without --access, login again finishes the pending sign-in whatever
+	// access it asked for (the skill's login shares this file); only an
+	// explicit, different --access starts over.
+	if p != nil && !explicit && p.Access != "" {
+		*access = p.Access
+	}
 	if p != nil && (float64(time.Now().Unix()) >= p.ExpiresAt || p.Access != *access) {
 		p = nil
 	}

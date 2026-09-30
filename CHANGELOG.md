@@ -59,7 +59,9 @@ platform and attaches them to the GitHub release.
   minute and then saying it is still waiting (exit 4). A link that ran out or
   was denied is replaced by a new one. The started sign-in is kept in
   `credentials.pending.json` next to the credentials. `login --wait` is the
-  one-call form, for a person at a terminal.
+  one-call form, for a person at a terminal. Without `--access`, login again
+  finishes the pending sign-in with the access it asked for (also one the
+  skill started); only a different `--access` starts over.
 
 ## 0.2.0
 
