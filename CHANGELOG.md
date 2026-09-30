@@ -3,7 +3,7 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
-## Unreleased
+## 0.3.0 (breaking)
 
 - README: what `monitoring` prints, how to read open and resolved alerts,
   and the alert emails.
