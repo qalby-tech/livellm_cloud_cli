@@ -5,6 +5,9 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- `create apps -f FILE --join APP` (or `"join"` in the file) adds the apps
+  to an app that is already there, in one step: they take its stack, and an
+  app on its own gets a stack named after itself (it restarts once).
 - `create --template T --secret portPasswords.<port>.<user>=…` keeps a
   username with dots (`alice.smith`, `a@b.com`) whole; before, it was split
   and the platform refused the request.

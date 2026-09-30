@@ -78,6 +78,10 @@ func TestWorkspaceRequests(t *testing.T) {
 	stack := filepath.Join(dir, "stack.json")
 	_ = os.WriteFile(stack, []byte(`{"apps":[{"id":"shop-web","image":"shop","databases":[{"id":"shop-db","env":{"DATABASE_URL":"url"}}]}],
 		"databases":[{"id":"shop-db","engine":"postgres"}]}`), 0o600)
+	cache := filepath.Join(dir, "cache.json")
+	_ = os.WriteFile(cache, []byte(`[{"id":"nextcloud-cache","hostname":"cache","image":"redis:7"}]`), 0o600)
+	cacheJoin := filepath.Join(dir, "cache-join.json")
+	_ = os.WriteFile(cacheJoin, []byte(`{"apps":[{"id":"nextcloud-cache","image":"redis:7"}],"join":"nextcloud"}`), 0o600)
 	stackSecrets := filepath.Join(dir, "stack-secrets.json")
 	_ = os.WriteFile(stackSecrets, []byte(`{"services":{"worker":{"imagePassword":"pw"}}}`), 0o600)
 	withEnv := filepath.Join(dir, "with-env.json")
@@ -181,6 +185,10 @@ func TestWorkspaceRequests(t *testing.T) {
 		{"create apps with their databases, linked", func() error { return cmdCreate([]string{"apps", "-f", stack}) },
 			got{"POST", "/v1/workloads", obj(`{"apps":[{"id":"shop-web","image":"shop","databases":[{"id":"shop-db","env":{"DATABASE_URL":"url"}}]}],
 				"databases":[{"id":"shop-db","engine":"postgres"}]}`)}},
+		{"create apps onto an existing app", func() error { return cmdCreate([]string{"apps", "-f", cache, "--join", "nextcloud"}) },
+			got{"POST", "/v1/workloads", obj(`{"apps":[{"id":"nextcloud-cache","hostname":"cache","image":"redis:7"}],"join":"nextcloud"}`)}},
+		{"create apps onto an existing app, named in the file", func() error { return cmdCreate([]string{"apps", "-f", cacheJoin}) },
+			got{"POST", "/v1/workloads", obj(`{"apps":[{"id":"nextcloud-cache","image":"redis:7"}],"join":"nextcloud"}`)}},
 		{"rm", func() error { return cmdRemove([]string{"web", "-y"}) }, got{"DELETE", "/v1/workloads/web", nil}},
 		{"rm an app with its databases", func() error { return cmdRemove([]string{"web", "--with-databases", "-y"}) },
 			got{"DELETE", "/v1/workloads/web?withDatabases=true", nil}},

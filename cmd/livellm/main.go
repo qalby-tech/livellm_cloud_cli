@@ -44,6 +44,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm create TYPE -f FILE                create a resource from a JSON file
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
+          [--join APP]                       add them to an existing app: they take its stack (one on its own gets
+                                             a stack named after itself and restarts once)
   livellm create --template T --id NEW       create from a saved template (a Composable App: --id is its name)
           [--secret PATH=VALUE] [--secret-env PATH=VAR] [-f FILE]
                                              the secrets it needs: API_KEY=…, credentials.password=…

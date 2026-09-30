@@ -91,6 +91,15 @@ livellm create --template shop --id shop-2 --secret-env STRIPE_KEY=STRIPE_KEY
 livellm rm shop-2-web --with-databases            # the app, and the databases made with it
 ```
 
+Add a service to an app that is already there with `--join`: the new
+services take its stack, and an app on its own gets a stack named after itself
+(it keeps its name inside it, and restarts once as it joins):
+
+```sh
+echo '[{"id": "nextcloud-cache", "hostname": "cache", "image": "redis:7"}]' > cache.json
+livellm create apps -f cache.json --join nextcloud  # nextcloud reaches it as cache, it reaches nextcloud as nextcloud
+```
+
 A link puts a database's connection details into the app's environment:
 `host`, `port`, `database`, `username`, `password` or `url` (a Redis database
 has no `database` or `username`). The password and the URL are read from the

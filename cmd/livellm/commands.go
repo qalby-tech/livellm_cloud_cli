@@ -453,7 +453,11 @@ func cmdCreate(args []string) error {
 	}
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the resource's settings")
+	join := fs.String("join", "", "with apps: add them to this existing app (or stack) in the same step")
 	_ = fs.Parse(rest)
+	if *join != "" && kind != "apps" {
+		return fmt.Errorf("--join goes with create apps")
+	}
 	if *file == "" {
 		return fmt.Errorf("pass the settings with -f file.json")
 	}
@@ -464,23 +468,33 @@ func cmdCreate(args []string) error {
 	// Several apps at once, all or nothing: the file holds a list of app
 	// settings (or {"apps": [...]}), the same bodies `create pod` takes, and
 	// the databases to make with them ({"apps": [...], "databases": [...]},
-	// each what `create storage` takes, a password optional).
+	// each what `create storage` takes, a password optional). --join (or
+	// "join" in the file) adds them to an app that is already there: they
+	// take its stack, and an app on its own gets a stack named after itself.
 	if kind == "apps" {
 		var list []map[string]any
 		var dbs []map[string]any
+		to := *join
 		if err := json.Unmarshal(raw, &list); err != nil {
 			var wrapped struct {
 				Apps      []map[string]any `json:"apps"`
 				Databases []map[string]any `json:"databases"`
+				Join      string           `json:"join"`
 			}
 			if err := json.Unmarshal(raw, &wrapped); err != nil || len(wrapped.Apps) == 0 {
 				return fmt.Errorf("%s should hold a list of apps, or {\"apps\": [...], \"databases\": [...]}", *file)
 			}
 			list, dbs = wrapped.Apps, wrapped.Databases
+			if to == "" {
+				to = wrapped.Join
+			}
 		}
 		body := map[string]any{"apps": list}
 		if len(dbs) > 0 {
 			body["databases"] = dbs
+		}
+		if to != "" {
+			body["join"] = to
 		}
 		var out struct {
 			Created   []string `json:"created"`
