@@ -167,11 +167,11 @@ func cmdRestore(args []string) error {
 	as := fs.String("as", "", "a database: the id of the new database to restore into")
 	at := fs.String("at", "", "a database with continuous backups: the moment to restore to (RFC 3339, e.g. 2026-09-25T14:05:00Z)")
 	passwordEnv := fs.String("password-env", "", "a database: the environment variable holding the new database's password (one is made up and shown once if left out)")
-	host := fs.String("host", "", "a database: run the new one on this host (ids from livellm hosts)")
-	region := fs.String("region", "", "a database: run the new one on any host in this region")
+	fs.String("host", "", "a database: run the new one on this host (ids from livellm hosts)")
+	fs.String("region", "", "a database: run the new one on any host in this region")
 	yes := fs.Bool("y", false, "don't ask")
 	_ = fs.Parse(rest)
-	placement, err := placementFlags(*host, *region)
+	placement, err := placementFlags(fs)
 	if err != nil {
 		return err
 	}

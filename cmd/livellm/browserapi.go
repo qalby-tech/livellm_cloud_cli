@@ -120,10 +120,10 @@ func browserAPICreate(args []string) error {
 	fs.Var(&remotes, "remote", "a browser running elsewhere: name=wss://address (repeatable)")
 	var auths repeated
 	fs.Var(&auths, "remote-auth", "a remote browser's login header, read from an environment variable: name=ENV_VAR (repeatable); \"Name: value\", or a bare value sent as Authorization; never shown again")
-	host := fs.String("host", "", "run it on this host (ids from livellm hosts)")
-	region := fs.String("region", "", "run it on any host in this region")
+	fs.String("host", "", "run it on this host (ids from livellm hosts)")
+	fs.String("region", "", "run it on any host in this region")
 	_ = fs.Parse(rest)
-	placement, err := placementFlags(*host, *region)
+	placement, err := placementFlags(fs)
 	if err != nil {
 		return err
 	}

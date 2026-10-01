@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 )
@@ -19,13 +20,21 @@ func cmdHosts([]string) error {
 	return print(out)
 }
 
-// placementFlags turns --host or --region into a placement; neither is
-// automatic (nil), both is refused.
-func placementFlags(host, region string) (map[string]any, error) {
-	host, region = strings.TrimSpace(host), strings.TrimSpace(region)
+// placementFlags turns the parsed --host or --region of fs into a placement;
+// neither is automatic (nil), both is refused, and one given with no value is
+// refused rather than quietly meaning automatic.
+func placementFlags(fs *flag.FlagSet) (map[string]any, error) {
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	host := strings.TrimSpace(fs.Lookup("host").Value.String())
+	region := strings.TrimSpace(fs.Lookup("region").Value.String())
 	switch {
-	case host != "" && region != "":
+	case given["host"] && given["region"]:
 		return nil, fmt.Errorf("--host or --region, not both: a host already sits in its region")
+	case given["host"] && host == "":
+		return nil, fmt.Errorf("--host needs a host id (livellm hosts lists them); leave it out for automatic")
+	case given["region"] && region == "":
+		return nil, fmt.Errorf("--region needs a region (livellm hosts lists them); leave it out for automatic")
 	case host != "":
 		return map[string]any{"strategy": "host", "host": host}, nil
 	case region != "":

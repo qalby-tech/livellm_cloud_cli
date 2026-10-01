@@ -194,7 +194,7 @@ func TestBrowserAPIAndSetRequests(t *testing.T) {
 	api := dir + "/api.json"
 	_ = os.WriteFile(api, []byte(`{"id":"scrapers","browsers":["a"]}`), 0o600)
 	placed := dir + "/placed.json"
-	_ = os.WriteFile(placed, []byte(`{"id":"web","image":"nginx","placement":{"strategy":"region","region":"ru-mow"}}`), 0o600)
+	_ = os.WriteFile(placed, []byte(`{"id":"web","image":"nginx","placement":{"strategy":"region","region":"region-1"}}`), 0o600)
 	automatic := dir + "/automatic.json"
 	_ = os.WriteFile(automatic, []byte(`{"pod":{"placement":null}}`), 0o600)
 
@@ -222,19 +222,19 @@ func TestBrowserAPIAndSetRequests(t *testing.T) {
 			"id": "mix", "autodiscover": true,
 			"externalBrowsers": []any{map[string]any{"id": "office", "wsUrl": "wss://o", "authHeader": "X-Token: s3cret"}}}}},
 		{"create on a host", func() error {
-			return cmdBrowserAPI([]string{"create", "near", "--all", "--host", "selangor"})
+			return cmdBrowserAPI([]string{"create", "near", "--all", "--host", "host-a"})
 		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
-			"id": "near", "autodiscover": true, "placement": map[string]any{"strategy": "host", "host": "selangor"}}}},
+			"id": "near", "autodiscover": true, "placement": map[string]any{"strategy": "host", "host": "host-a"}}}},
 		{"create in a region", func() error {
-			return cmdBrowserAPI([]string{"create", "near", "--browsers", "a", "--region", "ru-mow"})
+			return cmdBrowserAPI([]string{"create", "near", "--browsers", "a", "--region", "region-1"})
 		}, recorded{"POST", "/v1/workloads/controller", map[string]any{
 			"id": "near", "autodiscover": false, "browsers": []any{"a"},
-			"placement": map[string]any{"strategy": "region", "region": "ru-mow"}}}},
+			"placement": map[string]any{"strategy": "region", "region": "region-1"}}}},
 		{"create from a file", func() error { return cmdCreate([]string{"browser-api", "-f", api}) },
 			recorded{"POST", "/v1/workloads/controller", map[string]any{"id": "scrapers", "browsers": []any{"a"}}}},
 		{"create a placed app from a file", func() error { return cmdCreate([]string{"pod", "-f", placed}) },
 			recorded{"POST", "/v1/workloads/pod", map[string]any{"id": "web", "image": "nginx",
-				"placement": map[string]any{"strategy": "region", "region": "ru-mow"}}}},
+				"placement": map[string]any{"strategy": "region", "region": "region-1"}}}},
 		{"set back to automatic", func() error { return cmdSet([]string{"web", "-f", automatic}) },
 			recorded{"PATCH", "/v1/workloads/web", map[string]any{"pod": map[string]any{"placement": nil}}}},
 		{"add", func() error { return cmdBrowserAPI([]string{"add", "scrapers", "agent-3"}) },
@@ -264,7 +264,9 @@ func TestBrowserAPIAndSetRequests(t *testing.T) {
 		"login var unset":      {"create", "x", "--remote", "office=wss://o", "--remote-auth", "office=LIVELLM_TEST_UNSET_VAR"},
 		"login not name=var":   {"create", "x", "--remote", "office=wss://o", "--remote-auth", "office"},
 		"unknown verb":         {"grow", "scrapers"},
-		"host and region":      {"create", "x", "--all", "--host", "selangor", "--region", "ru-mow"},
+		"host and region":      {"create", "x", "--all", "--host", "host-a", "--region", "region-1"},
+		"blank host":           {"create", "x", "--all", "--host", ""},
+		"blank region":         {"create", "x", "--all", "--region="},
 	}
 	for name, args := range refused {
 		last = recorded{}

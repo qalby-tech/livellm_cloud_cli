@@ -64,17 +64,17 @@ func TestBackupRequests(t *testing.T) {
 			"id": "db-copy", "pointInTime": "2026-09-25T14:05:00Z",
 			"credentials": map[string]any{"password": "s3cret-pass"}}}},
 		{"restore a database onto a host", func() error {
-			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--host", "selangor",
+			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--host", "host-a",
 				"--password-env", "NEW_DB_PASSWORD"})
 		}, got{"POST", "/v1/workloads/db/backups/db-20260925/restore", map[string]any{
 			"id": "db-copy", "credentials": map[string]any{"password": "s3cret-pass"},
-			"placement": map[string]any{"strategy": "host", "host": "selangor"}}}},
+			"placement": map[string]any{"strategy": "host", "host": "host-a"}}}},
 		{"restore a database into a region", func() error {
-			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--region", "ru-mow",
+			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--region", "region-1",
 				"--password-env", "NEW_DB_PASSWORD"})
 		}, got{"POST", "/v1/workloads/db/backups/db-20260925/restore", map[string]any{
 			"id": "db-copy", "credentials": map[string]any{"password": "s3cret-pass"},
-			"placement": map[string]any{"strategy": "region", "region": "ru-mow"}}}},
+			"placement": map[string]any{"strategy": "region", "region": "region-1"}}}},
 		{"restore a machine in place", func() error {
 			return cmdRestore([]string{"box", "snap-1", "-y"})
 		}, got{"POST", "/v1/workloads/box/backups/snap-1/restore", nil}},
@@ -100,8 +100,10 @@ func TestBackupRequests(t *testing.T) {
 		"a time that isn't a time": {"db", "b1", "--as", "x", "--at", "yesterday"},
 		"no backup named":          {"db"},
 		"nothing that exists":      {"nope", "b1", "--as", "x"},
-		"both host and region":     {"db", "b1", "--as", "x", "--host", "selangor", "--region", "ru-mow"},
-		"a machine with a host":    {"box", "snap-1", "--host", "selangor", "-y"},
+		"both host and region":     {"db", "b1", "--as", "x", "--host", "host-a", "--region", "region-1"},
+		"a machine with a host":    {"box", "snap-1", "--host", "host-a", "-y"},
+		"a blank host":             {"db", "b1", "--as", "x", "--host", ""},
+		"a blank region":           {"db", "b1", "--as", "x", "--region", " "},
 	}
 	for name, args := range refused {
 		last = got{}
