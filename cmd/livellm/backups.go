@@ -127,12 +127,15 @@ func cmdBackup(args []string) error {
 }
 
 // restoreBody is what a database's restore sends: the new database's id and
-// password, and a moment when it restores to a minute rather than to the
-// end of the backup.
-func restoreBody(as, at, password string) map[string]any {
+// password, a moment when it restores to a minute rather than to the end of
+// the backup, and where the new database runs (automatic when nil).
+func restoreBody(as, at, password string, placement map[string]any) map[string]any {
 	body := map[string]any{"id": as, "credentials": map[string]any{"password": password}}
 	if at != "" {
 		body["pointInTime"] = at
+	}
+	if placement != nil {
+		body["placement"] = placement
 	}
 	return body
 }
@@ -164,8 +167,14 @@ func cmdRestore(args []string) error {
 	as := fs.String("as", "", "a database: the id of the new database to restore into")
 	at := fs.String("at", "", "a database with continuous backups: the moment to restore to (RFC 3339, e.g. 2026-09-25T14:05:00Z)")
 	passwordEnv := fs.String("password-env", "", "a database: the environment variable holding the new database's password (one is made up and shown once if left out)")
+	host := fs.String("host", "", "a database: run the new one on this host (ids from livellm hosts)")
+	region := fs.String("region", "", "a database: run the new one on any host in this region")
 	yes := fs.Bool("y", false, "don't ask")
 	_ = fs.Parse(rest)
+	placement, err := placementFlags(*host, *region)
+	if err != nil {
+		return err
+	}
 	if *at != "" {
 		if _, err := time.Parse(time.RFC3339, *at); err != nil {
 			return fmt.Errorf("--at %q isn't a time like 2026-09-25T14:05:00Z", *at)
@@ -181,8 +190,8 @@ func cmdRestore(args []string) error {
 			return fmt.Errorf("a database restores into a new one: pass --as NEW-ID (%s keeps running as it is)", id)
 		}
 	case isMachine(t):
-		if *as != "" || *at != "" || *passwordEnv != "" {
-			return fmt.Errorf("a machine restores in place: drop --as, --at and --password-env")
+		if *as != "" || *at != "" || *passwordEnv != "" || placement != nil {
+			return fmt.Errorf("a machine restores in place: drop --as, --at, --password-env, --host and --region")
 		}
 		if !*yes && !confirm(fmt.Sprintf("Put %s's disk back to backup %s? What was written since is lost.", id, backup)) {
 			return fmt.Errorf("nothing was restored")
@@ -213,7 +222,7 @@ func cmdRestore(args []string) error {
 		}
 		made = true
 	}
-	if err := call("POST", path, restoreBody(*as, *at, password), &out); err != nil {
+	if err := call("POST", path, restoreBody(*as, *at, password, placement), &out); err != nil {
 		return err
 	}
 	if out == nil {

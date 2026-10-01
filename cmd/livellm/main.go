@@ -40,8 +40,12 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm screenshot ID [--width PX] [-o FILE]
                                              a picture of its screen (JPEG)
   livellm reservations                       machines agents are holding
+  livellm hosts                              where resources can run: hosts, regions, free room
 
   livellm create TYPE -f FILE                create a resource from a JSON file
+                                             where it runs: "placement": {"strategy": "region", "region": "<r>"}
+                                             or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
+                                             set ID -f with {"<block>": {"placement": null}}: automatic again
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
@@ -63,7 +67,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
           [--clean] [--name N]               (a machine: stopped first; its name)
   livellm restore ID BACKUP                  a machine: put its disk back (stop it first)
   livellm restore ID BACKUP --as NEW [--at TIME] [--password-env VAR]
-                                             a database: restore into a new database
+          [--host H | --region R]            a database: restore into a new database (where it runs)
   livellm backups describe ID BACKUP TEXT    a machine's backup: note what it is
   livellm backups rm ID BACKUP               a machine's backup: delete it (asks first)
 
@@ -90,6 +94,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
+      [--host H | --region R]                where it runs (automatic when left out)
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser
   livellm browser-api remove NAME BROWSER    take a browser out of it
@@ -141,6 +146,8 @@ func main() {
 		err = cmdScreenshot(args)
 	case "reservations":
 		err = cmdReservations(args)
+	case "hosts", "fleet":
+		err = cmdHosts(args)
 	case "wait":
 		err = cmdWait(args)
 	case "database", "db":

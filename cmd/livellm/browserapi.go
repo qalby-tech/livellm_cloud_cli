@@ -52,7 +52,8 @@ func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 // or every browser, and remote browsers as id=ws-address. auths maps a
 // remote id to the environment variable holding its login header, so the
 // header never appears on the command line or in the shell history.
-func browserAPIBody(id, browsers string, all bool, remotes, auths []string) (map[string]any, error) {
+// placement says where it runs (automatic when nil).
+func browserAPIBody(id, browsers string, all bool, remotes, auths []string, placement map[string]any) (map[string]any, error) {
 	body := map[string]any{"id": id}
 	var names []string
 	for _, b := range strings.Split(browsers, ",") {
@@ -101,6 +102,9 @@ func browserAPIBody(id, browsers string, all bool, remotes, auths []string) (map
 	if len(ext) > 0 {
 		body["externalBrowsers"] = ext
 	}
+	if placement != nil {
+		body["placement"] = placement
+	}
 	return body, nil
 }
 
@@ -116,8 +120,14 @@ func browserAPICreate(args []string) error {
 	fs.Var(&remotes, "remote", "a browser running elsewhere: name=wss://address (repeatable)")
 	var auths repeated
 	fs.Var(&auths, "remote-auth", "a remote browser's login header, read from an environment variable: name=ENV_VAR (repeatable); \"Name: value\", or a bare value sent as Authorization; never shown again")
+	host := fs.String("host", "", "run it on this host (ids from livellm hosts)")
+	region := fs.String("region", "", "run it on any host in this region")
 	_ = fs.Parse(rest)
-	body, err := browserAPIBody(id, *browsers, *all, remotes, auths)
+	placement, err := placementFlags(*host, *region)
+	if err != nil {
+		return err
+	}
+	body, err := browserAPIBody(id, *browsers, *all, remotes, auths, placement)
 	if err != nil {
 		return err
 	}

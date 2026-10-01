@@ -3,6 +3,18 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.4.0 (unreleased)
+
+- `livellm hosts` (or `fleet`) lists where resources can run: each host's id,
+  region and free room, as the API answers.
+- Where it runs: any resource's settings may carry `placement`
+  (`{"strategy": "region", "region": R}` or `{"strategy": "host", "host": H}`)
+  in `create TYPE -f`; `set ID -f` with `{"<block>": {"placement": null}}`
+  makes it automatic again. Left out, it stays automatic.
+- `restore ID BACKUP --as NEW` and `browser-api create` take `--host H` or
+  `--region R` (one of them) for where the new resource runs; without them it
+  is automatic. A machine restores in place and takes neither.
+
 ## 0.3.0 (breaking)
 
 - README: what `monitoring` prints, how to read open and resolved alerts,

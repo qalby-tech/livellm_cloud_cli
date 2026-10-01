@@ -63,6 +63,18 @@ func TestBackupRequests(t *testing.T) {
 		}, got{"POST", "/v1/workloads/db/backups/db-20260925/restore", map[string]any{
 			"id": "db-copy", "pointInTime": "2026-09-25T14:05:00Z",
 			"credentials": map[string]any{"password": "s3cret-pass"}}}},
+		{"restore a database onto a host", func() error {
+			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--host", "selangor",
+				"--password-env", "NEW_DB_PASSWORD"})
+		}, got{"POST", "/v1/workloads/db/backups/db-20260925/restore", map[string]any{
+			"id": "db-copy", "credentials": map[string]any{"password": "s3cret-pass"},
+			"placement": map[string]any{"strategy": "host", "host": "selangor"}}}},
+		{"restore a database into a region", func() error {
+			return cmdRestore([]string{"db", "db-20260925", "--as", "db-copy", "--region", "ru-mow",
+				"--password-env", "NEW_DB_PASSWORD"})
+		}, got{"POST", "/v1/workloads/db/backups/db-20260925/restore", map[string]any{
+			"id": "db-copy", "credentials": map[string]any{"password": "s3cret-pass"},
+			"placement": map[string]any{"strategy": "region", "region": "ru-mow"}}}},
 		{"restore a machine in place", func() error {
 			return cmdRestore([]string{"box", "snap-1", "-y"})
 		}, got{"POST", "/v1/workloads/box/backups/snap-1/restore", nil}},
@@ -88,6 +100,8 @@ func TestBackupRequests(t *testing.T) {
 		"a time that isn't a time": {"db", "b1", "--as", "x", "--at", "yesterday"},
 		"no backup named":          {"db"},
 		"nothing that exists":      {"nope", "b1", "--as", "x"},
+		"both host and region":     {"db", "b1", "--as", "x", "--host", "selangor", "--region", "ru-mow"},
+		"a machine with a host":    {"box", "snap-1", "--host", "selangor", "-y"},
 	}
 	for name, args := range refused {
 		last = got{}
