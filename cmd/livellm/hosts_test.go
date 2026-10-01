@@ -15,7 +15,8 @@ import (
 func TestHostsPassesTheAnswerThrough(t *testing.T) {
 	const answer = `{"hosts":[{"id":"host-a","region":"region-1","zone":"","nodeGroup":"",
 		"cpuTotal":16,"cpuFree":5.5,"memTotalGi":62,"memFreeGi":31,"gpuType":"","gpuTotal":0,"gpuFree":0,
-		"utilization":0.4,"ready":true}]}`
+		"utilization":0.4,"ready":true,"schedulable":true},
+		{"id":"host-b","region":"region-1","cpuTotal":8,"cpuFree":8,"memTotalGi":32,"memFreeGi":32,"ready":true,"schedulable":false}]}`
 	var path, method string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		method, path = r.Method, r.URL.Path

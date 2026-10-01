@@ -6,7 +6,8 @@ platform and attaches them to the GitHub release.
 ## 0.4.0 (unreleased)
 
 - `livellm hosts` (or `fleet`) lists where resources can run: each host's id,
-  region and free room, as the API answers.
+  region and free room, as the API answers; a location is taken only on a
+  host that is `ready` and `schedulable`.
 - Where it runs: any resource's settings may carry `placement`
   (`{"strategy": "region", "region": R}` or `{"strategy": "host", "host": H}`)
   in `create TYPE -f`; `set ID -f` with `{"<block>": {"placement": null}}`

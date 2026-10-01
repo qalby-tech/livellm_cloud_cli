@@ -125,7 +125,8 @@ once.
 
 Where it runs: every resource is automatic unless you say otherwise, and
 LiveLLM picks the host. `livellm hosts` lists the hosts, their regions and
-their free room. Settings may carry `"placement": {"strategy": "region",
+their free room; a location is taken only on a host that is `ready` and
+`schedulable` (it takes new resources). Settings may carry `"placement": {"strategy": "region",
 "region": "<region>"}` for any host in a region, or `{"strategy": "host",
 "host": "<id>"}` to pin one host; `restore … --as NEW`, `browser-api create`
 and `create --template` take `--host H` or `--region R`. A template keeps where

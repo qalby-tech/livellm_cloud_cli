@@ -41,6 +41,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              a picture of its screen (JPEG)
   livellm reservations                       machines agents are holding
   livellm hosts                              where resources can run: hosts, regions, free room
+                                             (a location takes a host that is ready and schedulable)
 
   livellm create TYPE -f FILE                create a resource from a JSON file
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
