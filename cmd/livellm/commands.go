@@ -524,7 +524,9 @@ func cmdCreate(args []string) error {
 
 // templateBodyKeys are what a create from a template takes besides the new
 // id: the secrets the template left out. Anything else in -f would be
-// dropped without a word, so it is refused instead.
+// dropped without a word, so it is refused instead. A "placement" is taken
+// too (for any template): where everything it makes runs, in place of the
+// template's own.
 var templateBodyKeys = map[string]bool{
 	"secretEnv": true, "imagePassword": true, "gitToken": true, "portPasswords": true,
 	"credentials": true, "services": true,
@@ -542,12 +544,25 @@ func createFromTemplate(args []string) error {
 	var secrets, secretEnvs repeated
 	fs.Var(&secrets, "secret", "a secret the template needs, PATH=VALUE (repeatable): API_KEY=…, imagePassword=…, credentials.password=…, portPasswords.http.alice=…, services.web.secretEnv.API_KEY=…")
 	fs.Var(&secretEnvs, "secret-env", "the same, with the value read from an environment variable: PATH=VAR (repeatable)")
+	fs.String("host", "", "run everything it makes on this host (ids from livellm hosts), whatever the template says")
+	fs.String("region", "", "run everything it makes on any host in this region, whatever the template says")
+	automatic := fs.Bool("automatic", false, "run everything it makes automatically, whatever the template says")
 	_ = fs.Parse(args)
 	if *id == "" {
 		*id = *name
 	}
 	if *ref == "" || *id == "" {
 		return fmt.Errorf("pass --template T and --id NEW")
+	}
+	placement, err := placementFlags(fs)
+	if err != nil {
+		return err
+	}
+	if *automatic {
+		if placement != nil {
+			return fmt.Errorf("--automatic, --host or --region: one of them")
+		}
+		placement = map[string]any{"strategy": "auto"}
 	}
 	t, err := findTemplate(*ref)
 	if err != nil {
@@ -564,9 +579,17 @@ func createFromTemplate(args []string) error {
 		}
 		for k := range body {
 			switch {
+			case k == "placement":
+				if _, ok := body[k].(map[string]any); !ok {
+					return fmt.Errorf(`%s: placement is {"strategy": "region", "region": R}, {"strategy": "host", "host": H} or {"strategy": "auto"}`, *file)
+				}
+				if placement != nil {
+					return fmt.Errorf("%s: placement is in the file; leave out --host, --region and --automatic", *file)
+				}
 			case !templateBodyKeys[k]:
 				return fmt.Errorf("%s: %q can't be given here — a create from a template takes only the secrets it needs "+
-					"(secretEnv, imagePassword, gitToken, portPasswords, credentials, services); change settings after, with livellm set %s -f", *file, k, *id)
+					"(secretEnv, imagePassword, gitToken, portPasswords, credentials, services) and where it runs (placement); "+
+					"change settings after, with livellm set %s -f", *file, k, *id)
 			case t.Kind == "stack" && k != "services":
 				return fmt.Errorf("%s: %s is a Composable App's template: each service's secrets go under services.<name>.%s", *file, t.Name, k)
 			case t.Kind != "stack" && k == "services":
@@ -595,6 +618,9 @@ func createFromTemplate(args []string) error {
 		if err := putSecret(body, t, path, value); err != nil {
 			return err
 		}
+	}
+	if placement != nil {
+		body["placement"] = placement
 	}
 	if t.Kind == "stack" {
 		body["name"] = *id

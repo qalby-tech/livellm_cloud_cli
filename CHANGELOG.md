@@ -14,6 +14,10 @@ platform and attaches them to the GitHub release.
 - `restore ID BACKUP --as NEW` and `browser-api create` take `--host H` or
   `--region R` (one of them) for where the new resource runs; without them it
   is automatic. A machine restores in place and takes neither.
+- `create --template T --id NEW` takes `--host H`, `--region R` or
+  `--automatic` (or a `"placement"` in `-f`, for a Composable App's template
+  too): where everything it makes runs, in place of the template's own. A
+  template saved on a host that is gone can be used again without editing it.
 
 ## 0.3.0 (breaking)
 

@@ -513,3 +513,76 @@ func TestSecretPathKeepsAUsernameWhole(t *testing.T) {
 		}
 	}
 }
+
+// A create from a template takes where everything it makes runs, for a
+// Composable App's template as for any other: --host, --region, --automatic
+// or a placement in -f, in place of the template's own; nothing given sends
+// none.
+func TestTemplateCreatePlacement(t *testing.T) {
+	var sent map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/templates" {
+			_, _ = w.Write([]byte(`{"templates":[
+				{"id":"tpl_4","name":"shop","kind":"stack","config":{"stack":{"name":"shop","services":[{"name":"web","id":"shop-web","pod":{}}]}}},
+				{"id":"tpl_5","name":"box","kind":"vm-ubuntu","config":{}}]}`))
+			return
+		}
+		sent = nil
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		w.WriteHeader(202)
+		_, _ = w.Write([]byte(`{"created":["x"]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	quiet(t)
+	dir := t.TempDir()
+	auto := dir + "/auto.json"
+	_ = os.WriteFile(auto, []byte(`{"placement":{"strategy":"auto"}}`), 0o600)
+	region := dir + "/region.json"
+	_ = os.WriteFile(region, []byte(`{"secretEnv":{"S":"v"},"placement":{"strategy":"region","region":"region-1"}}`), 0o600)
+	stackRegion := dir + "/stack-region.json"
+	_ = os.WriteFile(stackRegion, []byte(`{"placement":{"strategy":"region","region":"region-1"}}`), 0o600)
+	bad := dir + "/bad.json"
+	_ = os.WriteFile(bad, []byte(`{"placement":"host-a"}`), 0o600)
+
+	cases := []struct {
+		args []string
+		want map[string]any
+	}{
+		{[]string{"--template", "shop", "--id", "shop2"}, map[string]any{"name": "shop2"}},
+		{[]string{"--template", "shop", "--id", "shop2", "--host", "host-a"},
+			map[string]any{"name": "shop2", "placement": map[string]any{"strategy": "host", "host": "host-a"}}},
+		{[]string{"--template", "box", "--id", "box2", "--region", "region-1"},
+			map[string]any{"id": "box2", "placement": map[string]any{"strategy": "region", "region": "region-1"}}},
+		{[]string{"--template", "shop", "--id", "shop2", "--automatic"},
+			map[string]any{"name": "shop2", "placement": map[string]any{"strategy": "auto"}}},
+		{[]string{"--template", "shop", "--id", "shop2", "-f", auto},
+			map[string]any{"name": "shop2", "placement": map[string]any{"strategy": "auto"}}},
+		{[]string{"--template", "shop", "--id", "shop2", "-f", stackRegion},
+			map[string]any{"name": "shop2", "placement": map[string]any{"strategy": "region", "region": "region-1"}}},
+		{[]string{"--template", "box", "--id", "box2", "-f", region},
+			map[string]any{"id": "box2", "secretEnv": map[string]any{"S": "v"}, "placement": map[string]any{"strategy": "region", "region": "region-1"}}},
+	}
+	for _, c := range cases {
+		if err := cmdCreate(c.args); err != nil {
+			t.Fatalf("%q: %v", c.args, err)
+		}
+		if !reflect.DeepEqual(sent, c.want) {
+			t.Errorf("%q: sent %v, want %v", c.args, sent, c.want)
+		}
+	}
+	for _, args := range [][]string{
+		{"--template", "shop", "--id", "shop2", "--host", "host-a", "--region", "region-1"},
+		{"--template", "shop", "--id", "shop2", "--host", "host-a", "--automatic"},
+		{"--template", "shop", "--id", "shop2", "--host", ""},
+		{"--template", "shop", "--id", "shop2", "-f", auto, "--host", "host-a"},
+		{"--template", "shop", "--id", "shop2", "-f", bad},
+	} {
+		sent = nil
+		if err := cmdCreate(args); err == nil || sent != nil {
+			t.Errorf("%q: sent %v, err %v; want it refused before any call", args, sent, err)
+		}
+	}
+}

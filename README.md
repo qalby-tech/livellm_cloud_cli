@@ -127,10 +127,12 @@ Where it runs: every resource is automatic unless you say otherwise, and
 LiveLLM picks the host. `livellm hosts` lists the hosts, their regions and
 their free room. Settings may carry `"placement": {"strategy": "region",
 "region": "<region>"}` for any host in a region, or `{"strategy": "host",
-"host": "<id>"}` to pin one host; `restore … --as NEW` and `browser-api create`
-take `--host H` or `--region R`. Changing it restarts the resource there, and
-`set ID -f` with `{"pod": {"placement": null}}` (the resource's own block) makes
-it automatic again. A resource pinned to a host waits for that host while it
+"host": "<id>"}` to pin one host; `restore … --as NEW`, `browser-api create`
+and `create --template` take `--host H` or `--region R`. A template keeps where
+its resources ran; `create --template … --automatic` (or `--host`/`--region`)
+puts everything it makes somewhere else instead. Changing it restarts the
+resource there, and `set ID -f` with `{"pod": {"placement": null}}` (the resource's own
+block) makes it automatic again. A resource pinned to a host waits for that host while it
 is down, and all copies of a database pinned to a host run on that host.
 
 ```sh
@@ -138,6 +140,7 @@ livellm hosts                                   # ids and regions to choose from
 echo '{"id": "web", "image": "nginx", "placement": {"strategy": "region", "region": "REGION"}}' > web.json
 livellm create pod -f web.json
 livellm restore db BACKUP --as db-copy --host HOST
+livellm create --template shop --id shop-2 --automatic   # automatic, whatever the template says
 ```
 
 For scripts that run with nobody there, with `LIVELLM_API_KEY` set:

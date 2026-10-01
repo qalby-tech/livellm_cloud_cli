@@ -53,6 +53,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm create --template T --id NEW       create from a saved template (a Composable App: --id is its name)
           [--secret PATH=VALUE] [--secret-env PATH=VAR] [-f FILE]
                                              the secrets it needs: API_KEY=…, credentials.password=…
+          [--host H | --region R | --automatic]
+                                             where everything it makes runs, in place of the template's
   livellm rm ID [--with-databases] [--force] delete one (asks first); an app: with the databases made with it
   livellm restart ID                         restart one
   livellm stop ID                            stop one; its disks are kept
