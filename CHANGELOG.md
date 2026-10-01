@@ -3,7 +3,7 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
-## 0.4.0 (unreleased)
+## 0.4.0
 
 - `livellm hosts` (or `fleet`) lists where resources can run: each host's id,
   region and free room, as the API answers; a location is taken only on a
