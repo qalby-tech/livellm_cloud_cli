@@ -94,6 +94,38 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm api-keys rm ID                     revoke one
                                              (permissions are given by a person, in the console)
 
+  livellm create browser --id NAME [-f FILE] [--locale ru-RU] [--timezone Europe/Moscow]
+          [--profile FILE [--profile-password-env VAR]]
+                                             a browser; with --profile it starts with that exported profile
+  livellm browser locales                    the languages and time zones a browser takes
+  livellm browser locale ID                  its language, time zone and location ('' clears one;
+          [--locale ru-RU] [--timezone Europe/Moscow] [--languages ru-RU,ru,en]
+          [--geolocation off|default|LAT,LON]   a change restarts the browser, its profile stays)
+  livellm browser proxy show ID              its proxies, and the address sites see now
+  livellm browser proxy set ID [-f FILE]     the proxies it goes out through (no restart after the first)
+          [--upstream NAME=socks5://host:port]...      given, these are the list; left out, the list stays
+          [--login NAME=USER --password-env [NAME=]VAR | --password-stdin]
+          [--change-ip-env NAME=VAR] [--change-ip-method NAME=GET|POST] [--min-change-ip NAME=SECONDS]
+          [--no-login NAME] [--no-change-ip NAME]
+          [--rotation off|session|interval] [--every MINUTES] [--order sequential|random] [--check-url URL]
+                                             passwords and change-IP links come from variables or stdin
+                                             (in -f: "env:VAR"); a stored login is kept unless you send one
+  livellm browser proxy clear ID             go out directly (its proxies stay set up; no restart)
+  livellm browser proxy remove ID            take proxies out (the browser restarts)
+  livellm browser proxy rotate ID [--to NAME] the next proxy now; open connections drop, pages reconnect
+  livellm browser profile list ID            its profile's size and snapshots
+  livellm browser profile snapshot ID [--name N]
+                                             keep the profile as it is now (its tabs close for a few seconds)
+  livellm browser profile restore ID SNAPSHOT [--keep-current]
+  livellm browser profile delete ID SNAPSHOT
+  livellm browser profile export ID [-o FILE] [--snapshot S] [--password-env VAR | --password-stdin]
+                                             a file of its sign-ins and cookies (keep it private)
+  livellm browser profile import ID FILE [--force] [--password-env VAR | --password-stdin]
+                                             replace its profile with an exported one
+  livellm browser profile copy ID --from OTHER [--snapshot S]
+                                             replace its profile with another browser's
+  livellm browser cookies import ID FILE     add cookies now: a JSON list, or a Playwright storage state
+
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
@@ -185,6 +217,8 @@ func main() {
 		err = cmdStart(args)
 	case "set":
 		err = cmdSet(args)
+	case "browser", "browsers":
+		err = cmdBrowser(args)
 	case "browser-api", "browser-apis":
 		err = cmdBrowserAPI(args)
 	case "build":

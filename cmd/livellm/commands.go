@@ -454,11 +454,25 @@ func cmdCreate(args []string) error {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the resource's settings")
 	join := fs.String("join", "", "with apps: add them to this existing app (or stack) in the same step")
+	newID := fs.String("id", "", "a browser: its id, when there is no -f (or in place of the file's)")
+	locale := fs.String("locale", "", "a browser: its language and region, e.g. ru-RU")
+	timezone := fs.String("timezone", "", "a browser: its time zone, e.g. Europe/Moscow")
+	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
+	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	_ = fs.Parse(rest)
 	if *join != "" && kind != "apps" {
 		return fmt.Errorf("--join goes with create apps")
 	}
+	if kind != "browser" && (*newID != "" || *locale != "" || *timezone != "" || *profile != "" || *profilePw != "") {
+		return fmt.Errorf("--id, --locale, --timezone and --profile go with create browser")
+	}
+	if kind == "browser" && *file == "" && *newID != "" {
+		return createBrowser(map[string]any{"id": *newID}, *locale, *timezone, *profile, *profilePw)
+	}
 	if *file == "" {
+		if kind == "browser" {
+			return fmt.Errorf("pass its id with --id NAME, or the settings with -f file.json")
+		}
 		return fmt.Errorf("pass the settings with -f file.json")
 	}
 	raw, err := os.ReadFile(*file)
@@ -512,6 +526,12 @@ func cmdCreate(args []string) error {
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return fmt.Errorf("%s isn't valid JSON: %w", *file, err)
+	}
+	if kind == "browser" {
+		if *newID != "" {
+			body["id"] = *newID
+		}
+		return createBrowser(body, *locale, *timezone, *profile, *profilePw)
 	}
 	if body["id"] == nil {
 		return fmt.Errorf("the settings need an id")

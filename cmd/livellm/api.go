@@ -51,6 +51,13 @@ func asProblem(err error, out **problem) bool { return errors.As(err, out) }
 
 var client = &http.Client{Timeout: 60 * time.Second}
 
+// longClient waits as long as the platform says a long call may take (it
+// answers by then); streamClient has no limit at all, for a browser profile
+// on its way to or from disk.
+func longClient(d time.Duration) *http.Client { return &http.Client{Timeout: d} }
+
+var streamClient = &http.Client{}
+
 // call makes one request with whatever credential is to hand, and decodes
 // a JSON answer into out.
 func call(method, path string, body any, out any) error {
@@ -70,10 +77,12 @@ func call(method, path string, body any, out any) error {
 // send makes one request and hands back the answer as it came: a file (a
 // screen's picture, a Remote Desktop file) is not JSON.
 func send(method, path string, body any) ([]byte, http.Header, error) {
-	tok, kind, err := credential()
-	if err != nil {
-		return nil, nil, err
-	}
+	return sendWith(client, method, path, body)
+}
+
+// sendWith is send with a client of the caller's: a call the platform takes
+// minutes to answer (a proxy rotation, a snapshot) gets a longer limit.
+func sendWith(c *http.Client, method, path string, body any) ([]byte, http.Header, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -82,38 +91,81 @@ func send(method, path string, body any) ([]byte, http.Header, error) {
 		}
 		rdr = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, apiBase()+path, rdr)
+	res, err := do(c, method, path, rdr, -1, "application/json", nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 32<<20))
+	return raw, res.Header, nil
+}
+
+// do makes one request with whatever credential is to hand. size is the
+// body's length when it is known (-1 otherwise). An answer of 400 or more is
+// the platform's refusal, as a problem; any other answer comes back open,
+// for the caller to read and close.
+func do(c *http.Client, method, path string, body io.Reader, size int64, contentType string, headers map[string]string) (*http.Response, error) {
+	tok, kind, err := credential()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(method, apiBase()+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if size >= 0 && body != nil {
+		req.ContentLength = size
+	}
+	req.Header.Set("Content-Type", contentType)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if kind == "key" {
 		req.Header.Set("x-api-key", tok)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
-	res, err := client.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("couldn't reach LiveLLM: %w", err)
+		return nil, fmt.Errorf("couldn't reach LiveLLM: %w", err)
 	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 32<<20))
 	if res.StatusCode >= 400 {
-		p := &problem{Status: res.StatusCode, Msg: strings.TrimSpace(string(raw))}
-		var e struct {
-			Error   string   `json:"error"`
-			Next    string   `json:"next"`
-			Missing []string `json:"missing"`
-		}
-		if json.Unmarshal(raw, &e) == nil && e.Error != "" {
-			p.Msg, p.Next, p.Missing = e.Error, e.Next, e.Missing
-		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		p := problemFrom(res.StatusCode, raw)
 		if res.StatusCode == 401 && kind == "signin" {
 			p.Next = "run: livellm login"
 		}
-		return nil, nil, p
+		return nil, p
 	}
-	return raw, res.Header, nil
+	return res, nil
+}
+
+// problemFrom reads a refusal: the platform's own words when it wrote JSON,
+// the text as it came otherwise.
+func problemFrom(status int, raw []byte) *problem {
+	p := &problem{Status: status, Msg: strings.TrimSpace(string(raw))}
+	var e struct {
+		Error   string   `json:"error"`
+		Message string   `json:"message"`
+		Code    string   `json:"code"`
+		Next    string   `json:"next"`
+		Missing []string `json:"missing"`
+	}
+	if json.Unmarshal(raw, &e) == nil {
+		msg := e.Error
+		if msg == "" {
+			msg = e.Message
+		}
+		if msg == "" {
+			msg = e.Code
+		}
+		if msg != "" {
+			p.Msg, p.Next, p.Missing = msg, e.Next, e.Missing
+		}
+		p.Code = e.Code
+	}
+	return p
 }
 
 // credential is the API key if one is set, otherwise the saved sign-in,

@@ -529,7 +529,16 @@ func cmdWait(args []string) error {
 	fs := flag.NewFlagSet("wait", flag.ExitOnError)
 	timeout := fs.Duration("timeout", 15*time.Minute, "give up after this long (a Windows machine takes up to 35 minutes)")
 	_ = fs.Parse(rest)
-	deadline := time.Now().Add(*timeout)
+	state, err := waitReady(id, *timeout)
+	if err != nil {
+		return err
+	}
+	return print(map[string]any{"id": id, "ready": true, "state": state})
+}
+
+// waitReady waits until a resource is ready and says how it reads then.
+func waitReady(id string, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
 	last := ""
 	for {
 		var live struct {
@@ -541,7 +550,7 @@ func cmdWait(args []string) error {
 			} `json:"workloads"`
 		}
 		if err := call("GET", "/v1/status", nil, &live); err != nil {
-			return err
+			return "", err
 		}
 		found := false
 		for _, w := range live.Workloads {
@@ -550,16 +559,16 @@ func cmdWait(args []string) error {
 			}
 			found = true
 			if w.Ready {
-				return print(map[string]any{"id": id, "ready": true, "state": strings.ToLower(w.Phase)})
+				return strings.ToLower(w.Phase), nil
 			}
 			if w.Phase == "Failed" {
-				return &problem{Status: 422, Msg: fmt.Sprintf("%s failed: %s", id, w.Message), Next: "livellm logs " + id}
+				return "", &problem{Status: 422, Msg: fmt.Sprintf("%s failed: %s", id, w.Message), Next: "livellm logs " + id}
 			}
 			// Stopped reads "not ready" for good, unless it was just started
 			// (then it reads Stopped for a moment until it comes up).
 			if w.Phase == "Stopped" {
 				if spec, err := findWorkload(id); err == nil && spec["stopped"] == true {
-					return &problem{Status: 409, Msg: id + " is stopped", Next: "livellm start " + id}
+					return "", &problem{Status: 409, Msg: id + " is stopped", Next: "livellm start " + id}
 				}
 			}
 			if line := strings.TrimSpace(w.Phase + " " + w.Message); line != last && line != "" {
@@ -569,11 +578,11 @@ func cmdWait(args []string) error {
 		}
 		if !found {
 			if _, err := findWorkload(id); err != nil {
-				return err
+				return "", err
 			}
 		}
 		if time.Now().After(deadline) {
-			return &problem{Status: 409, Msg: fmt.Sprintf("%s isn't ready after %s (%s)", id, *timeout, last), Next: "livellm status " + id}
+			return "", &problem{Status: 409, Msg: fmt.Sprintf("%s isn't ready after %s (%s)", id, timeout, last), Next: "livellm status " + id}
 		}
 		time.Sleep(waitPoll)
 	}
