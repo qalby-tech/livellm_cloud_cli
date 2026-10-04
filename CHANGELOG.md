@@ -13,15 +13,20 @@ platform and attaches them to the GitHub release.
 - `livellm browser proxy show|set|clear|remove|rotate ID`: proxies (http,
   https, socks5) with logins and mobile change-IP links, rotated off, per
   session or every N minutes, and by hand. `set` takes `--upstream
-  NAME=URL`, `--login NAME=USER` and the secrets from `--password-env
-  [NAME=]VAR`, `--password-stdin`, `--change-ip-env NAME=VAR` or `env:VAR`
-  in `-f FILE`, never from the command line. A login or link already stored
-  is kept when none is sent; `--no-login` / `--no-change-ip` drop them.
-  Without `--upstream` or a list in the file, the proxies stay as they are.
+  NAME=URL` and the logins and links from variables: `--username-env
+  NAME=VAR`, `--password-env [NAME=]VAR`, `--password-stdin`,
+  `--change-ip-env NAME=VAR`, or `env:VAR` in `-f FILE`, never from the
+  command line. A login or link already stored is kept when none is sent;
+  `--no-login` / `--no-change-ip` drop them. Without `--upstream` or a list
+  in the file, the proxies stay as they are (and `set` refuses when it can't
+  read them); a proxy listed again under its name and host keeps its
+  change-IP method and least time. `clear` goes direct and drops the
+  proxies and their logins; `remove` takes the proxy settings out (the browser restarts).
 - `livellm browser profile list|snapshot|restore|delete|export|import|copy`:
   profile snapshots, and a profile as a file (`.llcprofile`, or
   `.llcprofile.age` with a password). Export and import stream to and from
-  disk with no time limit; an export cut short saves nothing.
+  disk with no time limit; an export cut short saves nothing, and without
+  `-o` an export never replaces a file already there.
 - `livellm browser cookies import ID FILE`: a JSON list of cookies, or a
   Playwright storage state.
 - `livellm create browser --id NAME [--locale] [--timezone] [--profile FILE

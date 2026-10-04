@@ -104,13 +104,13 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm browser proxy show ID              its proxies, and the address sites see now
   livellm browser proxy set ID [-f FILE]     the proxies it goes out through (no restart after the first)
           [--upstream NAME=socks5://host:port]...      given, these are the list; left out, the list stays
-          [--login NAME=USER --password-env [NAME=]VAR | --password-stdin]
+          [--username-env NAME=VAR --password-env [NAME=]VAR | --password-stdin]
           [--change-ip-env NAME=VAR] [--change-ip-method NAME=GET|POST] [--min-change-ip NAME=SECONDS]
           [--no-login NAME] [--no-change-ip NAME]
           [--rotation off|session|interval] [--every MINUTES] [--order sequential|random] [--check-url URL]
-                                             passwords and change-IP links come from variables or stdin
+                                             logins and change-IP links come from variables or stdin
                                              (in -f: "env:VAR"); a stored login is kept unless you send one
-  livellm browser proxy clear ID             go out directly (its proxies stay set up; no restart)
+  livellm browser proxy clear ID             go out directly: its proxies and their logins are dropped (no restart)
   livellm browser proxy remove ID            take proxies out (the browser restarts)
   livellm browser proxy rotate ID [--to NAME] the next proxy now; open connections drop, pages reconnect
   livellm browser profile list ID            its profile's size and snapshots

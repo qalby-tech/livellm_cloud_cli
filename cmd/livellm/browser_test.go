@@ -98,6 +98,9 @@ func TestBrowserLocaleRequests(t *testing.T) {
 		{[]string{"b1", "--geolocation", "55.75,37.62,50"},
 			map[string]any{"browser": map[string]any{"geolocation": map[string]any{
 				"mode": "fixed", "latitude": 55.75, "longitude": 37.62, "accuracy": float64(50)}}}},
+		{[]string{"b1", "--geolocation", "55.75,37.62,50.0"},
+			map[string]any{"browser": map[string]any{"geolocation": map[string]any{
+				"mode": "fixed", "latitude": 55.75, "longitude": 37.62, "accuracy": float64(50)}}}},
 	}
 	for _, c := range cases {
 		f.seen = nil
@@ -114,7 +117,7 @@ func TestBrowserLocaleRequests(t *testing.T) {
 			t.Errorf("%v: sent %v, want %v", c.args, got, c.want)
 		}
 	}
-	for _, bad := range []string{"91,0", "1,2,3,4", "north,south", "1,2,0"} {
+	for _, bad := range []string{"91,0", "1,2,3,4", "north,south", "1,2,0", "55.75,37.62,10.5"} {
 		if err := cmdBrowser([]string{"locale", "b1", "--geolocation", bad}); err == nil {
 			t.Errorf("--geolocation %s was taken", bad)
 		}
@@ -183,7 +186,8 @@ func TestProxySetKeepsWhatIsThere(t *testing.T) {
 	}
 	// A login for one that is there, the rest kept.
 	t.Setenv("B_PW", "s3cret-b")
-	if err := cmdBrowser([]string{"proxy", "set", "b1", "--login", "a=alice", "--password-env", "B_PW", "--no-change-ip", "b"}); err != nil {
+	t.Setenv("A_USER", "alice")
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--username-env", "a=A_USER", "--password-env", "B_PW", "--no-change-ip", "b"}); err != nil {
 		t.Fatal(err)
 	}
 	ups := putBody(t, f)["upstreams"].([]any)
@@ -202,10 +206,11 @@ func TestProxySetFromFlagsAndFile(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"no proxies set"}`))
 	}
 	t.Setenv("PW_M", "pw-mobile")
+	t.Setenv("USER_M", "bob")
 	t.Setenv("CHANGE_M", "http://changeip/rot?key=k1")
 	err := cmdBrowser([]string{"proxy", "set", "b1",
 		"--upstream", "m=socks5://mobile:1080", "--upstream", "d=http://dc:3128",
-		"--login", "m=bob", "--password-env", "m=PW_M",
+		"--username-env", "m=USER_M", "--password-env", "m=PW_M",
 		"--change-ip-env", "m=CHANGE_M", "--change-ip-method", "m=post", "--min-change-ip", "m=90",
 		"--rotation", "interval", "--every", "10", "--order", "random"})
 	if err != nil {
@@ -245,15 +250,23 @@ func TestProxySetFromFlagsAndFile(t *testing.T) {
 	}
 
 	refused := [][]string{
-		{"--upstream", "m=socks5://bob:pw@mobile:1080"},              // a login in the address
-		{"--upstream", "m=socks5://mobile:1080", "--login", "m=bob"}, // no password for it
-		{"--login", "zz=bob", "--password-env", "PW_M"},              // no such proxy
-		{"--upstream", "m=socks5://mobile:1080", "--password-env", "m=UNSET_VAR_X", "--login", "m=bob"},
+		{"--upstream", "m=socks5://bob:pw@mobile:1080"},                        // a login in the address
+		{"--upstream", "m=socks5://mobile:1080", "--username-env", "m=USER_M"}, // no password for it
+		{"--username-env", "zz=USER_M", "--password-env", "PW_M"},              // no such proxy
+		{"--upstream", "m=socks5://mobile:1080", "--password-env", "m=UNSET_VAR_X", "--username-env", "m=USER_M"},
+		{"--upstream", "m=socks5://mobile:1080", "--username-env", "m=UNSET_VAR_X", "--password-env", "m=PW_M"},
+		{"--upstream", "m=socks5://mobile:1080", "--login", "m=bob", "--password-env", "m=PW_M"}, // a username on the command line
+		{"--upstream", "m=socks5://x:1", "--upstream", "m=socks5://y:1"},                         // one name twice
+		{"--rotation", "session", "--every", "5"},
+		{"--rotation", "off", "--every", "5"},
+		// a password left over: the login has its own
+		{"--upstream", "m=socks5://mobile:1080", "--username-env", "m=USER_M", "--password-env", "m=PW_M", "--password-env", "PW_M"},
+		{"--upstream", "m=socks5://mobile:1080", "--username-env", "m=USER_M", "--password-env", "m=PW_M", "--password-stdin"},
 		{"--upstream", "m=socks5://mobile:1080", "--change-ip-env", "m=UNSET_VAR_X"},
 		{"--rotation", "hourly"},
 		{"--every", "0"},
 		{"--upstream", "m=socks5://mobile:1080", "--min-change-ip", "m=5"},
-		{"--upstream", "m=socks5://mobile:1080", "--login", "m=bob", "--password-env", "m=PW_M", "--no-login", "m"},
+		{"--upstream", "m=socks5://mobile:1080", "--username-env", "m=USER_M", "--password-env", "m=PW_M", "--no-login", "m"},
 	}
 	for _, args := range refused {
 		f.seen = nil
@@ -548,5 +561,235 @@ func TestCreateBrowserWithProfile(t *testing.T) {
 	_ = json.Unmarshal(f.last("POST", "/v1/workloads/browser").body, &body)
 	if body["id"] != "b10" || body["storage"] != "10Gi" {
 		t.Errorf("create -f --id sent %v", body)
+	}
+}
+
+// A set that keeps the list must have read it: one it couldn't read would go
+// out empty and drop every proxy and its stored login.
+func TestProxySetNeverSendsAListItCouldNotRead(t *testing.T) {
+	f := newFakeAPI(t)
+	status := func(code int, body string) func(http.ResponseWriter, *http.Request, []byte) {
+		return func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_, _ = w.Write([]byte(body))
+		}
+	}
+	refused := map[string]func(http.ResponseWriter, *http.Request, []byte){
+		"409":            status(409, `{"error":"Restart this browser once.","code":"needs_restart"}`),
+		"other shape":    answerJSON(`{"settings":{"upstreams":[{"name":"a","server":"http://a:1"}]},"status":{}}`),
+		"no upstreams":   answerJSON(`{"proxy":{"rotation":{"mode":"off"}}}`),
+		"empty":          answerJSON(`{}`),
+		"status only":    answerJSON(`{"status":{"mode":"proxy"}}`),
+		"nothing at all": answerJSON(``),
+	}
+	for name, h := range refused {
+		f.answers["GET /v1/workloads/b1/proxy"] = h
+		f.seen = nil
+		if err := cmdBrowser([]string{"proxy", "set", "b1", "--rotation", "session"}); err == nil {
+			t.Errorf("%s: a set keeping the list was taken", name)
+		}
+		if f.last("PUT", "/v1/workloads/b1/proxy") != nil {
+			t.Errorf("%s: it wrote", name)
+		}
+		// Giving the list replaces it, so what is there doesn't matter.
+		if err := cmdBrowser([]string{"proxy", "set", "b1", "--upstream", "a=http://a:3128"}); err != nil {
+			t.Errorf("%s: a set with its list: %v", name, err)
+		} else if ups := putBody(t, f)["upstreams"].([]any); len(ups) != 1 {
+			t.Errorf("%s: sent %v", name, ups)
+		}
+	}
+	// None set (not found, or proxy null) is nothing to lose.
+	for name, h := range map[string]func(http.ResponseWriter, *http.Request, []byte){
+		"404":        status(404, `{"error":"no proxies set"}`),
+		"proxy null": answerJSON(`{"proxy":null,"status":{"mode":"direct"}}`),
+	} {
+		f.answers["GET /v1/workloads/b1/proxy"] = h
+		f.seen = nil
+		if err := cmdBrowser([]string{"proxy", "set", "b1", "--rotation", "session"}); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got := putBody(t, f); !reflect.DeepEqual(got, map[string]any{"upstreams": []any{}, "rotation": map[string]any{"mode": "session"}}) {
+			t.Errorf("%s: sent %v", name, got)
+		}
+	}
+	// Any other refusal is the person's to see.
+	f.answers["GET /v1/workloads/b1/proxy"] = status(403, `{"error":"This API key can't change browser proxies."}`)
+	f.seen = nil
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--upstream", "a=http://a:3128"}); err == nil {
+		t.Error("a 403 on reading was passed over")
+	}
+}
+
+// A list given again keeps each same-named proxy's change-IP method and
+// least time while it stays on its host; flags and the file still win.
+func TestProxySetListKeepsChangeIPSettings(t *testing.T) {
+	f := newFakeAPI(t)
+	f.answers["GET /v1/workloads/b1/proxy"] = answerJSON(currentProxy)
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--upstream", "a=http://proxy-a:3128", "--upstream", "b=socks5://proxy-b:1080", "--upstream", "c=http://c:3128"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"name": "a", "server": "http://proxy-a:3128"},
+		map[string]any{"name": "b", "server": "socks5://proxy-b:1080", "changeIpMethod": "POST", "minChangeIpSeconds": float64(120)},
+		map[string]any{"name": "c", "server": "http://c:3128"},
+	}
+	if got := putBody(t, f)["upstreams"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("sent %v\nwant %v", got, want)
+	}
+	// Moved to another host: nothing carried (the platform asks for its link again).
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--upstream", "b=socks5://elsewhere:1080"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := putBody(t, f)["upstreams"]; !reflect.DeepEqual(got, []any{map[string]any{"name": "b", "server": "socks5://elsewhere:1080"}}) {
+		t.Errorf("moved: sent %v", got)
+	}
+	// A flag wins over what is stored; so does the file.
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--upstream", "b=socks5://proxy-b:1080", "--change-ip-method", "b=GET"}); err != nil {
+		t.Fatal(err)
+	}
+	if b := putBody(t, f)["upstreams"].([]any)[0].(map[string]any); b["changeIpMethod"] != "GET" || b["minChangeIpSeconds"] != float64(120) {
+		t.Errorf("flag: sent %v", b)
+	}
+	file := filepath.Join(t.TempDir(), "p.json")
+	_ = os.WriteFile(file, []byte(`{"upstreams":[{"name":"b","server":"socks5://proxy-b:1080","minChangeIpSeconds":30}]}`), 0o600)
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "-f", file}); err != nil {
+		t.Fatal(err)
+	}
+	if b := putBody(t, f)["upstreams"].([]any)[0].(map[string]any); b["changeIpMethod"] != "POST" || b["minChangeIpSeconds"] != float64(30) {
+		t.Errorf("file: sent %v", b)
+	}
+	// One name twice, in the file and on the command line, is refused.
+	_ = os.WriteFile(file, []byte(`{"upstreams":[{"name":"res","server":"http://x:1"},{"name":"res","server":"http://y:1"}]}`), 0o600)
+	f.seen = nil
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "-f", file}); err == nil {
+		t.Error("a file naming one proxy twice was taken")
+	}
+	_ = os.WriteFile(file, []byte(`{"upstreams":[{"name":"res","server":"http://x:1"}]}`), 0o600)
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "-f", file, "--upstream", "res=http://y:1"}); err == nil {
+		t.Error("a file and a flag naming one proxy were taken")
+	}
+	if f.last("PUT", "/v1/workloads/b1/proxy") != nil {
+		t.Error("refused, but it wrote")
+	}
+}
+
+// A username never goes on the command line: --login is refused, and the
+// username comes from a variable.
+func TestProxyUsernameFromAVariable(t *testing.T) {
+	f := newFakeAPI(t)
+	f.answers["GET /v1/workloads/b1/proxy"] = answerJSON(currentProxy)
+	t.Setenv("RES_USER", "customer-123-zone-res")
+	t.Setenv("RES_PW", "pw")
+	if err := cmdBrowser([]string{"proxy", "set", "b1", "--username-env", "b=RES_USER", "--password-env", "b=RES_PW"}); err != nil {
+		t.Fatal(err)
+	}
+	if b := putBody(t, f)["upstreams"].([]any)[1].(map[string]any); b["username"] != "customer-123-zone-res" || b["password"] != "pw" {
+		t.Errorf("b: %v", b)
+	}
+	f.seen = nil
+	err := cmdBrowser([]string{"proxy", "set", "b1", "--login", "b=customer-123", "--password-env", "b=RES_PW"})
+	if err == nil || !strings.Contains(err.Error(), "--username-env") {
+		t.Errorf("--login: %v", err)
+	}
+	if f.last("PUT", "/v1/workloads/b1/proxy") != nil {
+		t.Error("--login wrote")
+	}
+}
+
+// A fixed location's accuracy goes as whole metres.
+func TestGeolocationAccuracyIsWhole(t *testing.T) {
+	f := newFakeAPI(t)
+	if err := cmdBrowser([]string{"locale", "b1", "--geolocation", "55.75,37.62,50"}); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.last("PATCH", "/v1/workloads/b1"); r == nil || !bytes.Contains(r.body, []byte(`"accuracy":50,`)) {
+		t.Errorf("sent %s", r.body)
+	}
+}
+
+// Without -o an export never replaces a file already there; with -o it does.
+func TestProfileExportKeepsAFileThere(t *testing.T) {
+	f := newFakeAPI(t)
+	f.answers["POST /v1/workloads/b1/profile/export"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		w.Header().Set("Content-Disposition", `attachment; filename="b1-2026-10-04.llcprofile"`)
+		_, _ = w.Write([]byte("new-profile"))
+	}
+	dir := t.TempDir()
+	wd, _ := os.Getwd()
+	_ = os.Chdir(dir)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	_ = os.WriteFile("b1-2026-10-04.llcprofile", []byte("morning"), 0o600)
+	_ = os.WriteFile("b1-2026-10-04-2.llcprofile", []byte("noon"), 0o600)
+	if err := cmdBrowser([]string{"profile", "export", "b1", "--snapshot", "s1"}); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"b1-2026-10-04.llcprofile":   "morning",
+		"b1-2026-10-04-2.llcprofile": "noon",
+		"b1-2026-10-04-3.llcprofile": "new-profile",
+	} {
+		if got, _ := os.ReadFile(name); string(got) != want {
+			t.Errorf("%s holds %q, want %q", name, got, want)
+		}
+	}
+	if err := cmdBrowser([]string{"profile", "export", "b1", "--snapshot", "s1", "-o", "b1-2026-10-04.llcprofile"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile("b1-2026-10-04.llcprofile"); string(got) != "new-profile" {
+		t.Errorf("-o kept %q", got)
+	}
+	// A platform name of "-" or a hidden file is not taken.
+	for _, bad := range []string{"-", ".bashrc", ""} {
+		h := http.Header{}
+		h.Set("Content-Disposition", `attachment; filename="`+bad+`"`)
+		if n := exportName(h, "b1", true); n == "-" || strings.HasPrefix(n, ".") || !strings.HasSuffix(n, ".llcprofile.age") {
+			t.Errorf("%q gave %q", bad, n)
+		}
+	}
+	left, _ := filepath.Glob(filepath.Join(dir, ".livellm-export-*"))
+	if len(left) != 0 {
+		t.Errorf("left behind %v", left)
+	}
+}
+
+// The languages a browser takes are there without a sign-in.
+func TestBrowserLocalesWithoutSignIn(t *testing.T) {
+	f := newFakeAPI(t)
+	t.Setenv("LIVELLM_API_KEY", "")
+	t.Setenv("LIVELLM_CREDENTIALS", filepath.Join(t.TempDir(), "none.json"))
+	f.answers["GET /v1/browsers/locales"] = answerJSON(`{"locales":["ru-RU"],"timezones":["UTC"]}`)
+	if err := cmdBrowser([]string{"locales"}); err != nil {
+		t.Fatal(err)
+	}
+	r := f.last("GET", "/v1/browsers/locales")
+	if r == nil || r.header.Get("Authorization") != "" || r.header.Get("x-api-key") != "" {
+		t.Errorf("sent %v", r)
+	}
+	// With a key it goes along.
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	if err := cmdBrowser([]string{"locales"}); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.last("GET", "/v1/browsers/locales"); r.header.Get("x-api-key") != "llc_test" {
+		t.Error("the key didn't go along")
+	}
+}
+
+// A failed import after create says how to finish it, password included.
+func TestCreateBrowserProfileRetryNamesThePassword(t *testing.T) {
+	f := newFakeAPI(t)
+	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[{"id":"b9","phase":"Running","ready":true}]}`)
+	f.answers["POST /v1/workloads/b9/profile/import"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}
+	file := filepath.Join(t.TempDir(), "p.llcprofile.age")
+	_ = os.WriteFile(file, []byte("x"), 0o600)
+	t.Setenv("PROFILE_PW", "pw")
+	err := cmdCreate([]string{"browser", "--id", "b9", "--profile", file, "--profile-password-env", "PROFILE_PW"})
+	if err == nil || !strings.Contains(err.Error(), "-y --password-env PROFILE_PW") {
+		t.Errorf("got %v", err)
 	}
 }

@@ -109,6 +109,34 @@ func do(c *http.Client, method, path string, body io.Reader, size int64, content
 	if err != nil {
 		return nil, err
 	}
+	return doAs(c, tok, kind, method, path, body, size, contentType, headers)
+}
+
+// callPublic is call for what LiveLLM answers without a sign-in (the
+// languages a browser takes): the credential goes along when there is one,
+// and the request goes without one when there isn't.
+func callPublic(path string, out any) error {
+	tok, kind, err := credential()
+	if err != nil {
+		tok, kind = "", ""
+	}
+	res, err := doAs(client, tok, kind, "GET", path, nil, -1, "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 32<<20))
+	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("LiveLLM answered something unexpected: %w", err)
+	}
+	return nil
+}
+
+// doAs is do with the credential given: kind "" sends none.
+func doAs(c *http.Client, tok, kind, method, path string, body io.Reader, size int64, contentType string, headers map[string]string) (*http.Response, error) {
 	req, err := http.NewRequest(method, apiBase()+path, body)
 	if err != nil {
 		return nil, err
@@ -120,9 +148,10 @@ func do(c *http.Client, method, path string, body io.Reader, size int64, content
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	if kind == "key" {
+	switch kind {
+	case "key":
 		req.Header.Set("x-api-key", tok)
-	} else {
+	case "signin":
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	res, err := c.Do(req)

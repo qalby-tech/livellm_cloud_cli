@@ -78,27 +78,31 @@ variables or stdin, never the command line; a login already stored is kept
 when a later `set` sends none:
 
 ```sh
-export RES_PW=… MOBILE_ROTATE='https://provider.example/rotate?key=…'
+export RES_USER=… RES_PW=… MOBILE_ROTATE='https://provider.example/rotate?key=…'
 livellm browser proxy set shop-ru \
-  --upstream res=socks5://res.example:1080 --login res=alice --password-env res=RES_PW \
+  --upstream res=socks5://res.example:1080 --username-env res=RES_USER --password-env res=RES_PW \
   --upstream mob=http://mobile.example:8000 --change-ip-env mob=MOBILE_ROTATE \
   --rotation interval --every 30
 livellm browser proxy show shop-ru          # the address sites see, and where it comes from
 livellm browser proxy rotate shop-ru        # the next proxy now; open connections drop, pages reconnect
 livellm browser proxy set shop-ru --rotation session   # proxies and logins stay as they are
-livellm browser proxy clear shop-ru         # go out directly (no restart); remove takes them out
+livellm browser proxy clear shop-ru         # go out directly (no restart); its proxies and logins are dropped
 ```
 
 In a file (`-f proxy.json`) a secret may read `"password": "env:RES_PW"`.
+`--upstream` or a list in the file replaces the list; left out, the list
+stays as it is.
 `session` gives a Browser API session a new proxy when it starts on a browser
 no other recent session uses. The proxy covers the browser as LiveLLM starts
-it; a program connected to the browser (over CDP) can go around it.
+it; a program connected to the browser (over CDP) can go around it, and an
+extension allowed to manage proxy or privacy settings can change it.
 An API key needs the proxies permission, which a person gives it on the
 console's Keys page.
 
 A browser's profile (its sign-ins, cookies and history): snapshots to switch
-back to, and a file to move it with. Taking a snapshot or an export closes
-the browser's tabs for a few seconds.
+back to, and a file to move it with. Taking a snapshot, or exporting the
+profile as it is now, closes the browser's tabs for a few seconds (an export
+of a snapshot doesn't).
 
 ```sh
 livellm browser profile snapshot shop-ru --name signed-in
@@ -111,8 +115,8 @@ livellm browser cookies import shop-ru cookies.json     # a list of cookies, or 
 ```
 
 An exported file holds sign-ins: keep it private (the command saves it
-readable by you alone), or protect it with a password (`age -d` opens it
-too). Only profiles exported from LiveLLM browsers can be imported; from
+readable by you alone, and without `-o` never over a file already there), or
+protect it with a password (`age -d` opens it too). Only profiles exported from LiveLLM browsers can be imported; from
 another Chrome, import its cookies. An API key needs the profiles permission
 to export, import or copy.
 

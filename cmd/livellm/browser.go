@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -135,7 +136,7 @@ func fileSecret(v, what string) (string, error) {
 
 func browserLocales([]string) error {
 	var out map[string]any
-	if err := call("GET", "/v1/browsers/locales", nil, &out); err != nil {
+	if err := callPublic("/v1/browsers/locales", &out); err != nil {
 		return err
 	}
 	return print(out)
@@ -171,10 +172,10 @@ func geolocation(v string) (map[string]any, error) {
 	}
 	g["mode"], g["latitude"], g["longitude"] = "fixed", nums[0], nums[1]
 	if len(nums) == 3 {
-		if nums[2] < 1 || nums[2] > 10000 {
-			return nil, fmt.Errorf("--geolocation: accuracy is 1 to 10000 metres")
+		if nums[2] != float64(int(nums[2])) || nums[2] < 1 || nums[2] > 10000 {
+			return nil, fmt.Errorf("--geolocation: accuracy is whole metres, 1 to 10000")
 		}
-		g["accuracy"] = nums[2]
+		g["accuracy"] = int(nums[2])
 	}
 	return g, nil
 }
@@ -313,16 +314,18 @@ func printAnswer(raw []byte, fallback map[string]any) error {
 }
 
 // proxyFlags are what `proxy set` takes on the command line. Everything that
-// names an upstream is NAME=VALUE; secrets are names of variables.
+// names an upstream is NAME=VALUE; a login's username and password, and a
+// change-IP link, are names of variables (they never go on the command line).
 type proxyFlags struct {
-	file                         string
-	upstreams, logins, passwords repeated
-	changeIPs, methods, mins     repeated
-	noLogin, noChangeIP          repeated
-	passwordStdin                bool
-	rotation, order, checkURL    string
-	every                        int
-	set                          map[string]bool
+	file                        string
+	upstreams, users, passwords repeated
+	logins                      repeated // the username on the command line: refused
+	changeIPs, methods, mins    repeated
+	noLogin, noChangeIP         repeated
+	passwordStdin               bool
+	rotation, order, checkURL   string
+	every                       int
+	set                         map[string]bool
 }
 
 // upstreamKeys are what an upstream may hold; the credential fields are sent
@@ -350,6 +353,9 @@ func proxyBlock(m map[string]any) map[string]any {
 	}
 	return nil
 }
+
+// noProxies is the `proxy show` answer for a browser with none set.
+func noProxies() map[string]any { return map[string]any{"proxy": nil} }
 
 func listOfMaps(v any) []map[string]any {
 	var out []map[string]any
@@ -379,17 +385,35 @@ func checkServer(name, server string) error {
 		return fmt.Errorf("proxy %s: %q isn't an address like socks5://host:1080 or http://host:3128", name, server)
 	}
 	if u.User != nil {
-		return fmt.Errorf("proxy %s: put the login in --login %s=USER and --password-env, not in the address", name, name)
+		return fmt.Errorf("proxy %s: put the login in --username-env %s=VAR and --password-env, not in the address", name, name)
 	}
 	return nil
 }
 
+// sameProxyHost says two proxy addresses reach the same host and port, as
+// the platform decides whether a stored login stays with a proxy.
+func sameProxyHost(a, b any) bool {
+	sa, _ := a.(string)
+	sb, _ := b.(string)
+	ua, errA := url.Parse(sa)
+	ub, errB := url.Parse(sb)
+	return errA == nil && errB == nil && ua.Host != "" && strings.EqualFold(ua.Host, ub.Host)
+}
+
+var errProxiesUnread = fmt.Errorf("couldn't read the proxies the browser has now, so nothing was sent: " +
+	"give the whole list with --upstream NAME=URL or -f FILE")
+
 // proxyRequest builds the whole proxy block `proxy set` sends from what is
-// there now (current, the `proxy show` answer), the file and the flags.
-// Upstreams the file or --upstream don't list are kept as they are when
-// neither lists any; a stored login or change-IP link is kept unless new
-// values come or --no-login / --no-change-ip says to drop it.
+// there now (current, the `proxy show` answer; nil when it couldn't be
+// read), the file and the flags. Upstreams the file or --upstream don't list
+// are kept as they are when neither lists any; a stored login or change-IP
+// link is kept unless new values come or --no-login / --no-change-ip says to
+// drop it, and a listed upstream that keeps its name and host keeps its
+// change-IP method and least time too.
 func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) {
+	if len(f.logins) > 0 {
+		return nil, fmt.Errorf("a proxy's username comes from a variable, not the command line: --username-env NAME=VAR (or \"username\" in -f)")
+	}
 	var file map[string]any
 	if f.file != "" {
 		raw, err := os.ReadFile(f.file)
@@ -404,27 +428,48 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 			return nil, fmt.Errorf("%s should hold {\"upstreams\": [...], \"rotation\": {...}}", f.file)
 		}
 	}
-	cur := proxyBlock(current)
+	_, fileHasList := file["upstreams"]
+	explicit := fileHasList || len(f.upstreams) > 0
+
+	// What is there now. Sending a list means replacing it, so only a set
+	// that keeps the list needs to have read it: a list it couldn't read
+	// would go out empty and drop every proxy and its login.
+	var cur map[string]any
+	if current != nil {
+		if v, ok := current["proxy"]; ok && v == nil {
+			cur = map[string]any{} // none set
+		} else if cur = proxyBlock(current); cur != nil {
+			if _, ok := cur["upstreams"]; !ok {
+				cur = nil // not the shape a proxy block has
+			}
+		}
+	}
 	if cur == nil {
+		if !explicit {
+			return nil, errProxiesUnread
+		}
 		cur = map[string]any{}
+	}
+	stored := map[string]map[string]any{}
+	for _, u := range listOfMaps(cur["upstreams"]) {
+		if n, _ := u["name"].(string); n != "" {
+			stored[n] = u
+		}
 	}
 
 	// The upstream list: the file's and the flags', or what is there now.
 	var ups []map[string]any
 	index := map[string]int{}
-	add := func(u map[string]any) {
+	add := func(u map[string]any) error {
 		n, _ := u["name"].(string)
-		if i, ok := index[n]; ok {
-			for k, v := range u {
-				ups[i][k] = v
-			}
-			return
+		if _, dup := index[n]; dup {
+			return fmt.Errorf("two proxies are called %s: give each name once", n)
 		}
 		index[n] = len(ups)
 		ups = append(ups, u)
+		return nil
 	}
-	_, fileHasList := file["upstreams"]
-	if fileHasList || len(f.upstreams) > 0 {
+	if explicit {
 		for _, u := range listOfMaps(file["upstreams"]) {
 			c := map[string]any{}
 			for k, v := range u {
@@ -446,14 +491,31 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 					c[k] = v
 				}
 			}
-			add(c)
+			if err := add(c); err != nil {
+				return nil, err
+			}
 		}
 		for _, v := range f.upstreams {
 			n, server, err := nameValue("upstream", v)
 			if err != nil {
 				return nil, err
 			}
-			add(map[string]any{"name": n, "server": strings.TrimSpace(server)})
+			if err := add(map[string]any{"name": n, "server": strings.TrimSpace(server)}); err != nil {
+				return nil, err
+			}
+		}
+		// A proxy listed again under its name and host keeps how its
+		// change-IP link is called; the list replaces the stored one whole.
+		for _, u := range ups {
+			s := stored[u["name"].(string)]
+			if s == nil || !sameProxyHost(u["server"], s["server"]) {
+				continue
+			}
+			for _, k := range []string{"changeIpMethod", "minChangeIpSeconds"} {
+				if _, set := u[k]; !set && s[k] != nil {
+					u[k] = s[k]
+				}
+			}
 		}
 	} else {
 		for _, u := range listOfMaps(cur["upstreams"]) {
@@ -463,7 +525,9 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 					c[k] = v
 				}
 			}
-			add(c)
+			if err := add(c); err != nil {
+				return nil, err
+			}
 		}
 	}
 	find := func(flag, n string) (map[string]any, error) {
@@ -473,29 +537,41 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 		return nil, fmt.Errorf("--%s %s: there is no proxy called %s (add it with --upstream %s=socks5://host:port)", flag, n, n, n)
 	}
 
-	// Logins: --login NAME=USER with its password from --password-env
+	// Logins: --username-env NAME=VAR with its password from --password-env
 	// [NAME=]VAR or --password-stdin (one login then).
 	pwVar := map[string]string{}
 	bare := ""
 	for _, v := range f.passwords {
 		if n, val, ok := strings.Cut(v, "="); ok {
-			pwVar[strings.TrimSpace(n)] = strings.TrimSpace(val)
+			n = strings.TrimSpace(n)
+			if _, twice := pwVar[n]; twice {
+				return nil, fmt.Errorf("--password-env %s comes twice", n)
+			}
+			pwVar[n] = strings.TrimSpace(val)
 		} else {
+			if bare != "" {
+				return nil, fmt.Errorf("several --password-env: name each one's proxy, --password-env NAME=VAR")
+			}
 			bare = strings.TrimSpace(v)
 		}
 	}
-	if (bare != "" || f.passwordStdin) && len(f.logins) > 1 {
-		return nil, fmt.Errorf("with several --login, give each its password: --password-env NAME=VAR")
+	if (bare != "" || f.passwordStdin) && len(f.users) > 1 {
+		return nil, fmt.Errorf("with several --username-env, give each its password: --password-env NAME=VAR")
 	}
 	if bare != "" && f.passwordStdin {
 		return nil, fmt.Errorf("pass --password-env or --password-stdin, not both")
 	}
-	for _, v := range f.logins {
-		n, user, err := nameValue("login", v)
+	stdinUsed := false
+	for _, v := range f.users {
+		n, userVar, err := nameValue("username-env", v)
 		if err != nil {
 			return nil, err
 		}
-		u, err := find("login", n)
+		u, err := find("username-env", n)
+		if err != nil {
+			return nil, err
+		}
+		user, err := secretFrom(strings.TrimSpace(userVar), false, "proxy "+n+" username")
 		if err != nil {
 			return nil, err
 		}
@@ -507,15 +583,20 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 			bare = ""
 		}
 		if envVar == "" && !f.passwordStdin {
-			return nil, fmt.Errorf("--login %s needs its password: --password-env %s=VAR or --password-stdin", n, n)
+			return nil, fmt.Errorf("--username-env %s needs its password: --password-env %s=VAR or --password-stdin", n, n)
 		}
-		pw, err := secretFrom(envVar, f.passwordStdin && envVar == "", "proxy "+n+" password")
+		fromStdin := f.passwordStdin && envVar == ""
+		pw, err := secretFrom(envVar, fromStdin, "proxy "+n+" password")
 		if err != nil {
 			return nil, err
 		}
+		stdinUsed = stdinUsed || fromStdin
 		u["password"] = pw
 	}
-	if len(f.logins) == 0 && (bare != "" || f.passwordStdin) {
+	if len(f.users) > 0 && (bare != "" || (f.passwordStdin && !stdinUsed)) {
+		return nil, fmt.Errorf("a password with no proxy to go to: name its proxy, --password-env NAME=VAR")
+	}
+	if len(f.users) == 0 && (bare != "" || f.passwordStdin) {
 		// A password for the one upstream the file gave a username without one.
 		var target map[string]any
 		for _, u := range ups {
@@ -527,7 +608,7 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 			}
 		}
 		if target == nil {
-			return nil, fmt.Errorf("a password for which proxy? add --login NAME=USER")
+			return nil, fmt.Errorf("a password for which proxy? add --username-env NAME=VAR")
 		}
 		pw, err := secretFrom(bare, f.passwordStdin, fmt.Sprintf("proxy %v password", target["name"]))
 		if err != nil {
@@ -541,7 +622,7 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 			return nil, err
 		}
 		if _, hasUser := u["username"]; !hasUser {
-			return nil, fmt.Errorf("--password-env %s: add --login %s=USER (a login is a username and a password)", n, n)
+			return nil, fmt.Errorf("--password-env %s: add --username-env %s=VAR (a login is a username and a password)", n, n)
 		}
 		pw, err := secretFrom(envVar, false, "proxy "+n+" password")
 		if err != nil {
@@ -658,6 +739,9 @@ func proxyRequest(current map[string]any, f proxyFlags) (map[string]any, error) 
 		if f.every < 1 || f.every > 1440 {
 			return nil, fmt.Errorf("--every: minutes from 1 to 1440")
 		}
+		if f.set["rotation"] && f.rotation != "interval" {
+			return nil, fmt.Errorf("--every goes with --rotation interval, not %s", f.rotation)
+		}
 		if !f.set["rotation"] {
 			rot["mode"] = "interval"
 		}
@@ -694,7 +778,8 @@ func proxySet(id string, rest []string) error {
 	var f proxyFlags
 	fs.StringVar(&f.file, "f", "", "a JSON file: {\"upstreams\": [...], \"rotation\": {...}, \"checkUrl\": ...}; a secret in it may read env:VAR")
 	fs.Var(&f.upstreams, "upstream", "a proxy: NAME=socks5://host:port (http, https, socks5; repeatable). Given, these are the list")
-	fs.Var(&f.logins, "login", "a proxy's username: NAME=USER (its password from --password-env or --password-stdin)")
+	fs.Var(&f.users, "username-env", "the variable holding a proxy's username: NAME=VAR (its password from --password-env or --password-stdin)")
+	fs.Var(&f.logins, "login", "gone: the username comes from a variable, --username-env NAME=VAR")
 	fs.Var(&f.passwords, "password-env", "the variable holding a proxy's password: [NAME=]VAR (repeatable)")
 	fs.BoolVar(&f.passwordStdin, "password-stdin", false, "read the one proxy password from stdin")
 	fs.Var(&f.changeIPs, "change-ip-env", "a mobile proxy's change-IP link, from a variable: NAME=VAR")
@@ -711,14 +796,18 @@ func proxySet(id string, rest []string) error {
 	if len(f.set) == 0 {
 		return fmt.Errorf("set what? --upstream NAME=socks5://host:port, -f FILE, or --rotation")
 	}
-	current := map[string]any{}
+	// Nothing set yet reads as not found; a browser that has never had
+	// proxies may answer that it needs a restart (which the first set does),
+	// and then what it has is unknown: a set that keeps the list refuses. The
+	// write says if the browser itself isn't there.
+	var current map[string]any
 	if err := call("GET", proxyPath(id), nil, &current); err != nil {
 		var p *problem
-		// Nothing set yet reads as not found (or, on a browser that has never
-		// had proxies, as needing a restart, which the first set does); the
-		// write says if the browser itself isn't there.
 		if !asProblem(err, &p) || (p.Status != 404 && p.Status != 409) {
 			return hint(id, err)
+		}
+		if p.Status == 404 {
+			current = noProxies()
 		}
 	}
 	body, err := proxyRequest(current, f)
@@ -840,7 +929,8 @@ func profileDeleteSnapshot(args []string) error {
 // the current folder.
 func exportName(h http.Header, id string, encrypted bool) string {
 	if _, params, err := mime.ParseMediaType(h.Get("Content-Disposition")); err == nil {
-		if n := filepath.Base(params["filename"]); n != "" && n != "." && n != "/" && n != ".." {
+		// Never "-" (stdout), a hidden file or a path: a plain name here.
+		if n := filepath.Base(params["filename"]); n != "-" && n != "/" && !strings.HasPrefix(n, ".") {
 			return n
 		}
 	}
@@ -854,20 +944,23 @@ func exportName(h http.Header, id string, encrypted bool) string {
 // saveStream writes body to path as it arrives, through a file beside it
 // that takes its place only when the whole profile is there: a broken
 // download never leaves half a profile under the name asked for. A profile
-// holds sign-ins, so only this user reads it.
-func saveStream(body io.Reader, path string, want int64) (int64, error) {
+// holds sign-ins, so only this user reads it. With replace false a file
+// already at path stays, and the profile goes under the next free name
+// (shop-2.llcprofile); the answer is where it went.
+func saveStream(body io.Reader, path string, want int64, replace bool) (string, int64, error) {
 	if path == "-" {
-		return io.Copy(os.Stdout, body)
+		n, err := io.Copy(os.Stdout, body)
+		return path, n, err
 	}
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".livellm-export-*")
 	if err != nil {
-		return 0, err
+		return path, 0, err
 	}
 	defer os.Remove(tmp.Name())
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
-		return 0, err
+		return path, 0, err
 	}
 	n, err := io.Copy(tmp, body)
 	if err == nil && want >= 0 && n != want {
@@ -877,14 +970,46 @@ func saveStream(body io.Reader, path string, want int64) (int64, error) {
 		err = cerr
 	}
 	if err != nil {
-		return n, fmt.Errorf("export didn't finish, nothing was saved: %w", err)
+		return path, n, fmt.Errorf("export didn't finish, nothing was saved: %w", err)
 	}
-	return n, os.Rename(tmp.Name(), path)
+	if replace {
+		return path, n, os.Rename(tmp.Name(), path)
+	}
+	for i := 1; i <= 100; i++ {
+		to := numberedName(path, i)
+		// A link is made only where nothing is: two exports at once can't
+		// take the same name.
+		err := os.Link(tmp.Name(), to)
+		if err == nil {
+			return to, n, nil
+		}
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if _, serr := os.Lstat(to); !errors.Is(serr, os.ErrNotExist) {
+			continue
+		}
+		return to, n, os.Rename(tmp.Name(), to) // a disk with no links
+	}
+	return path, n, fmt.Errorf("%s and the next 99 names are taken: pass -o FILE", path)
+}
+
+// numberedName is path for 1, and path with -i before its .llcprofile after.
+func numberedName(path string, i int) string {
+	if i == 1 {
+		return path
+	}
+	dir, base := filepath.Split(path)
+	stem, ext := base, ""
+	if k := strings.Index(base, ".llcprofile"); k > 0 {
+		stem, ext = base[:k], base[k:]
+	}
+	return dir + stem + "-" + strconv.Itoa(i) + ext
 }
 
 func profileExport(args []string) error {
 	fs := flag.NewFlagSet("browser profile export", flag.ExitOnError)
-	out := fs.String("o", "", "the file to write (- for stdout; the platform's name for it when left out)")
+	out := fs.String("o", "", "the file to write, replacing one there (- for stdout; left out, the platform's name for it, never replacing a file)")
 	snap := fs.String("snapshot", "", "export this snapshot instead of the profile as it is now")
 	pwEnv := fs.String("password-env", "", "protect the file with the password in this variable")
 	pwStdin := fs.Bool("password-stdin", false, "protect the file with a password read from stdin")
@@ -914,7 +1039,7 @@ func profileExport(args []string) error {
 	if path == "" {
 		path = exportName(res.Header, id, password != "")
 	}
-	n, err := saveStream(res.Body, path, res.ContentLength)
+	path, n, err := saveStream(res.Body, path, res.ContentLength, *out != "")
 	if err != nil || path == "-" {
 		return err
 	}
@@ -1121,6 +1246,9 @@ func createBrowser(body map[string]any, locale, timezone, profile, profilePwEnv 
 		return print(out)
 	}
 	again := fmt.Sprintf("the browser is made; put the profile in with: livellm browser profile import %s %s -y", id, profile)
+	if profilePwEnv != "" {
+		again += " --password-env " + profilePwEnv
+	}
 	if _, err := waitReady(id, profileWait); err != nil {
 		return fmt.Errorf("%w — %s", err, again)
 	}

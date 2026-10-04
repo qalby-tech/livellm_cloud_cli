@@ -2,3 +2,5 @@
 /livellm.exe
 /dist/
 /livellm_cloud_cli
+/cmd/livellm/livellm
+/cmd/livellm/livellm.exe
