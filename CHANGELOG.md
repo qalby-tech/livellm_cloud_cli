@@ -3,6 +3,33 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.5.0
+
+- `livellm browser locale ID --locale ru-RU --timezone Europe/Moscow
+  [--languages …] [--geolocation off|default|LAT,LON]`: a browser's language,
+  time zone and location ('' clears one; the browser restarts, its profile
+  stays). With no flags it shows them; `livellm browser locales` lists what
+  it takes.
+- `livellm browser proxy show|set|clear|remove|rotate ID`: proxies (http,
+  https, socks5) with logins and mobile change-IP links, rotated off, per
+  session or every N minutes, and by hand. `set` takes `--upstream
+  NAME=URL`, `--login NAME=USER` and the secrets from `--password-env
+  [NAME=]VAR`, `--password-stdin`, `--change-ip-env NAME=VAR` or `env:VAR`
+  in `-f FILE`, never from the command line. A login or link already stored
+  is kept when none is sent; `--no-login` / `--no-change-ip` drop them.
+  Without `--upstream` or a list in the file, the proxies stay as they are.
+- `livellm browser profile list|snapshot|restore|delete|export|import|copy`:
+  profile snapshots, and a profile as a file (`.llcprofile`, or
+  `.llcprofile.age` with a password). Export and import stream to and from
+  disk with no time limit; an export cut short saves nothing.
+- `livellm browser cookies import ID FILE`: a JSON list of cookies, or a
+  Playwright storage state.
+- `livellm create browser --id NAME [--locale] [--timezone] [--profile FILE
+  [--profile-password-env VAR]]`: with `--profile`, the new browser starts
+  with that profile.
+- `api-keys create|set --permissions` names `proxies` and `profiles` too
+  (a person gives them, on the console's Keys page).
+
 ## 0.4.0
 
 - `livellm hosts` (or `fleet`) lists where resources can run: each host's id,

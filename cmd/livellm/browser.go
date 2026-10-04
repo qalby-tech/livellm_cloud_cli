@@ -714,9 +714,10 @@ func proxySet(id string, rest []string) error {
 	current := map[string]any{}
 	if err := call("GET", proxyPath(id), nil, &current); err != nil {
 		var p *problem
-		// Nothing set yet reads as not found; the write says if the browser
-		// itself isn't there.
-		if !asProblem(err, &p) || p.Status != 404 {
+		// Nothing set yet reads as not found (or, on a browser that has never
+		// had proxies, as needing a restart, which the first set does); the
+		// write says if the browser itself isn't there.
+		if !asProblem(err, &p) || (p.Status != 404 && p.Status != 409) {
 			return hint(id, err)
 		}
 	}

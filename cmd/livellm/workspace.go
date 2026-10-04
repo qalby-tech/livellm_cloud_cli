@@ -284,7 +284,7 @@ func cmdAPIKeys(args []string) error {
 			return err
 		}
 		fs := flag.NewFlagSet("api-keys create", flag.ExitOnError)
-		perms := fs.String("permissions", "", "what it may do beyond its workspace, e.g. billing (a person gives these, in the console)")
+		perms := fs.String("permissions", "", "what it may do beyond its workspace: billing, proxies, profiles (a person gives these, in the console)")
 		_ = fs.Parse(rest)
 		body := map[string]any{"name": name}
 		if *perms != "" {
@@ -302,10 +302,10 @@ func cmdAPIKeys(args []string) error {
 			return err
 		}
 		fs := flag.NewFlagSet("api-keys set", flag.ExitOnError)
-		perms := fs.String("permissions", "", "the key's permissions, all of them: billing, or none")
+		perms := fs.String("permissions", "", "the key's permissions, all of them: billing, proxies, profiles, or none")
 		_ = fs.Parse(rest)
 		if *perms == "" {
-			return fmt.Errorf("pass --permissions billing, or --permissions none to take them all away")
+			return fmt.Errorf("pass --permissions billing,proxies,profiles (those it may have), or --permissions none to take them all away")
 		}
 		var out map[string]any
 		if err := call("PATCH", "/v1/keys/"+url.PathEscape(id), map[string]any{"permissions": permissionList(*perms)}, &out); err != nil {

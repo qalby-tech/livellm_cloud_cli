@@ -63,6 +63,59 @@ session (`X-Session-Id`) stays on its browser; `/browsers/agent-2/…` or
 `X-Browser-Id: agent-2` picks one. `set ID -f changes.json` changes only the
 settings the file holds.
 
+A browser's language, time zone and location (a change restarts it; its
+profile stays):
+
+```sh
+livellm browser locales                                  # what it takes
+livellm create browser --id shop-ru --locale ru-RU --timezone Europe/Moscow
+livellm browser locale shop-ru --geolocation 55.75,37.62 # or off, or default
+livellm browser locale shop-ru --locale ''               # back to the default
+```
+
+Proxies, with a login and a mobile proxy's change-IP link. Secrets come from
+variables or stdin, never the command line; a login already stored is kept
+when a later `set` sends none:
+
+```sh
+export RES_PW=… MOBILE_ROTATE='https://provider.example/rotate?key=…'
+livellm browser proxy set shop-ru \
+  --upstream res=socks5://res.example:1080 --login res=alice --password-env res=RES_PW \
+  --upstream mob=http://mobile.example:8000 --change-ip-env mob=MOBILE_ROTATE \
+  --rotation interval --every 30
+livellm browser proxy show shop-ru          # the address sites see, and where it comes from
+livellm browser proxy rotate shop-ru        # the next proxy now; open connections drop, pages reconnect
+livellm browser proxy set shop-ru --rotation session   # proxies and logins stay as they are
+livellm browser proxy clear shop-ru         # go out directly (no restart); remove takes them out
+```
+
+In a file (`-f proxy.json`) a secret may read `"password": "env:RES_PW"`.
+`session` gives a Browser API session a new proxy when it starts on a browser
+no other recent session uses. The proxy covers the browser as LiveLLM starts
+it; a program connected to the browser (over CDP) can go around it.
+An API key needs the proxies permission, which a person gives it on the
+console's Keys page.
+
+A browser's profile (its sign-ins, cookies and history): snapshots to switch
+back to, and a file to move it with. Taking a snapshot or an export closes
+the browser's tabs for a few seconds.
+
+```sh
+livellm browser profile snapshot shop-ru --name signed-in
+livellm browser profile list shop-ru
+livellm browser profile restore shop-ru SNAPSHOT --keep-current
+PW=… livellm browser profile export shop-ru -o shop.llcprofile.age --password-env PW
+livellm create browser --id shop-2 --profile shop.llcprofile.age --profile-password-env PW
+livellm browser profile copy shop-3 --from shop-ru      # browser to browser
+livellm browser cookies import shop-ru cookies.json     # a list of cookies, or a Playwright storage state
+```
+
+An exported file holds sign-ins: keep it private (the command saves it
+readable by you alone), or protect it with a password (`age -d` opens it
+too). Only profiles exported from LiveLLM browsers can be imported; from
+another Chrome, import its cookies. An API key needs the profiles permission
+to export, import or copy.
+
 An app and its databases in one step, linked:
 
 ```sh
