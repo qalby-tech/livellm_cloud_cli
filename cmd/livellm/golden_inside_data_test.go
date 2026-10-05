@@ -198,6 +198,23 @@ PATCH /v1/workloads/edge {"pod":{"databases":[{"id":"cache"},{"id":"db"}]}}
 == writes
 PATCH /v1/workloads/worker {"pod":{"databases":[{"id":"cache"},{"id":"lone"}]}}
 `,
+	"link-by-app-name": `== stdout
+{
+  "app": "shop",
+  "databases": [
+    "db",
+    "lone"
+  ],
+  "id": "web",
+  "linked": [
+    "lone"
+  ],
+  "note": "reach only: no variables, the app doesn't restart; linked from web, the first service of shop; the whole Composable App shop reaches lone"
+}
+== stderr
+== writes
+PATCH /v1/workloads/web {"pod":{"databases":[{"env":{"DATABASE_URL":"url"},"id":"db"},{"id":"lone"}]}}
+`,
 	"link-desktop": `== stdout
 {
   "databases": [
@@ -331,11 +348,9 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
   "alsoFrom": [],
   "change": "livellm reach old --from a,b | --from \"*\" | --none",
   "id": "old",
-  "means": "the whole workspace",
-  "note": "not set yet: reached from the whole workspace until the platform closes it",
-  "reachableFrom": [
-    "*"
-  ]
+  "means": "not set yet",
+  "note": "until the platform closes this workspace, the whole workspace may still reach it; this is no setting that lets the whole workspace in (letting anything reach it still needs the user's agreement)",
+  "reachableFrom": null
 }
 == stderr
 == writes
@@ -419,6 +434,41 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
     },
     {
       "id": "every",
+      "through": null,
+      "why": "drives it"
+    }
+  ],
+  "change": "livellm reach b1 --from a,b | --from \"*\" | --none",
+  "id": "b1",
+  "means": "nothing else in the workspace",
+  "reachableFrom": []
+}
+== stderr
+== writes
+
+`,
+	"reach-show-browser-driven-closed": `== stdout
+{
+  "addresses": [
+    {
+      "host": "ws-b1",
+      "port": 9222
+    },
+    {
+      "host": "ws-b1",
+      "port": 9000
+    }
+  ],
+  "alsoFrom": [
+    {
+      "id": "pool",
+      "through": [
+        "edge"
+      ],
+      "why": "drives it"
+    },
+    {
+      "id": "every",
       "through": [
         "*"
       ],
@@ -447,6 +497,40 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
 
 `,
 	"reach-show-database-linked": `== stdout
+{
+  "addresses": [
+    {
+      "host": "ws-db-rw",
+      "port": 5432
+    }
+  ],
+  "alsoFrom": [
+    {
+      "app": "shop",
+      "id": "web",
+      "why": "links it"
+    },
+    {
+      "app": "shop",
+      "id": "worker",
+      "via": "web",
+      "why": "links it"
+    },
+    {
+      "id": "desk",
+      "why": "links it"
+    }
+  ],
+  "change": "livellm link APP|MACHINE db (--remove takes a link out)",
+  "id": "db",
+  "means": "only what links it",
+  "note": "the platform hasn't closed this workspace yet: until it does, the whole workspace may still reach it"
+}
+== stderr
+== writes
+
+`,
+	"reach-show-database-linked-closed": `== stdout
 {
   "addresses": [
     {
@@ -510,13 +594,26 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
   ],
   "change": "livellm link APP|MACHINE cache (--remove takes a link out)",
   "id": "cache",
-  "means": "only what links it"
+  "means": "only what links it",
+  "note": "the platform hasn't closed this workspace yet: until it does, the whole workspace may still reach it"
 }
 == stderr
 == writes
 
 `,
 	"reach-show-database-unlinked": `== stdout
+{
+  "alsoFrom": [],
+  "change": "livellm link APP|MACHINE lone (--remove takes a link out)",
+  "id": "lone",
+  "means": "only what links it",
+  "note": "nothing links it yet; the platform hasn't closed this workspace yet: until it does, the whole workspace may still reach it"
+}
+== stderr
+== writes
+
+`,
+	"reach-show-database-unlinked-closed": `== stdout
 {
   "alsoFrom": [],
   "change": "livellm link APP|MACHINE lone (--remove takes a link out)",

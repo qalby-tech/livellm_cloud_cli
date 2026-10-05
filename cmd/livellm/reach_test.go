@@ -30,6 +30,13 @@ const insideWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"win","type":"vm-windows","reachableFrom":["box"],"vm":{}},
 	{"id":"desk","type":"desktop","reachableFrom":[],"desktop":{"databases":[{"id":"db"}]}}]}}`
 
+// insideClosedWorkspace is insideWorkspace once the platform has written
+// every setting (old and every had none).
+var insideClosedWorkspace = strings.NewReplacer(
+	`{"id":"old","type":"pod","pod"`, `{"id":"old","type":"pod","reachableFrom":[],"pod"`,
+	`{"id":"every","type":"controller","controller"`, `{"id":"every","type":"controller","reachableFrom":["*"],"controller"`,
+).Replace(insideWorkspace)
+
 const insideConnect = `{"tool":"api","type":"storage","engine":"postgres",
 	"private":{"host":"ws-db-rw","port":5432},
 	"inside":{"alsoFrom":[{"id":"web","why":"links it"},{"id":"desk","why":"links it"}],
@@ -52,6 +59,9 @@ func TestGoldenInsideAccess(t *testing.T) {
 		{"reach-show-absent", func() error { return cmdReach([]string{"old"}) }},
 		{"reach-show-database-redis", func() error { return cmdReach([]string{"cache"}) }},
 		{"reach-show-database-unlinked", func() error { return cmdReach([]string{"lone"}) }},
+		{"reach-show-database-unlinked-closed", func() error { return cmdReach([]string{"lone"}) }},
+		{"reach-show-database-linked-closed", func() error { return cmdReach([]string{"db"}) }},
+		{"reach-show-browser-driven-closed", func() error { return cmdReach([]string{"b1"}) }},
 		{"reach-show-browser-driven", func() error { return cmdReach([]string{"b1"}) }},
 		{"reach-show-closed", func() error { return cmdReach([]string{"edge"}) }},
 		{"reach-show-machine", func() error { return cmdReach([]string{"box"}) }},
@@ -64,6 +74,7 @@ func TestGoldenInsideAccess(t *testing.T) {
 		{"link-app-stack", func() error { return cmdLink([]string{"worker", "cache,lone"}) }},
 		{"link-machine", func() error { return cmdLink([]string{"win", "cache", "db"}) }},
 		{"link-desktop", func() error { return cmdLink([]string{"desk", "cache"}) }},
+		{"link-by-app-name", func() error { return cmdLink([]string{"shop", "lone"}) }},
 		{"link-already", func() error { return cmdLink([]string{"box", "cache"}) }},
 		{"link-some-already", func() error { return cmdLink([]string{"box", "cache", "lone"}) }},
 		{"link-remove-with-variables", func() error { return cmdLink([]string{"web", "db", "--remove"}) }},
@@ -118,8 +129,12 @@ func TestGoldenInsideAccess(t *testing.T) {
 	}
 	written := map[string]string{}
 	for _, c := range cases {
+		ws := insideWorkspace
+		if strings.HasSuffix(c.name, "-closed") {
+			ws = insideClosedWorkspace
+		}
 		g := newGoldenAPI(t, map[string]string{
-			"GET /v1/workspace":             insideWorkspace,
+			"GET /v1/workspace":             ws,
 			"POST /v1/workloads/db/connect": insideConnect,
 		})
 		out, errOut, err := captured(t, c.run)
@@ -190,6 +205,9 @@ func TestReachRefusesBeforeSending(t *testing.T) {
 		// change the whole app (here: close it).
 		{"apps", "-f", f, "--join", "shop", "--reachable-from", ""},
 		{"apps", "-f", f, "--join", "web", "--reachable-from", "*"},
+		// old has no setting yet: that is no "*" (nor nothing) to match.
+		{"apps", "-f", f, "--join", "old", "--reachable-from", "*"},
+		{"apps", "-f", f, "--join", "old", "--reachable-from", ""},
 		{"pod", "-f", f, "--reachable-from", "web,", "box"},
 	} {
 		if err := cmdCreate(args); err == nil {

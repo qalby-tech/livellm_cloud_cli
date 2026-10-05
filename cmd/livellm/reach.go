@@ -14,10 +14,16 @@ import (
 // Composable App's name, or any of its services, stands for the whole app).
 // Every resource starts with nothing, those made before included. Whatever
 // the setting, a resource is reached by its own parts, the other services of
-// its Composable App (one resource), and (a browser) the Browser API that
+// its Composable App (one resource), the apps that wait for it (dependsOn,
+// each with its whole Composable App), and (a browser) the Browser API that
 // drives it. A database has no setting: it is reached only by what links it
-// (an app's databases or dependsOn, with its whole Composable App; a
-// machine's or a Desktop App's databases).
+// (an app's databases, with its whole Composable App; a machine's or a
+// Desktop App's databases) or waits for it (an app's dependsOn).
+//
+// A resource whose setting the platform hasn't written yet shows null, never
+// "*": it may still be reached from the whole workspace until the platform
+// closes the workspace, but it is no setting that lets the whole workspace
+// in.
 //
 // Letting more in (a setting, a database link, dependsOn, a service added to
 // a Composable App) takes the Network permission for an API key or an agent,
@@ -275,15 +281,32 @@ func (ws *workspaceSpec) names(n string) bool {
 }
 
 // joinReach is the setting of the resource --join names: its Composable
-// App's, or its own; false when there is none called that.
-func (ws *workspaceSpec) joinReach(to string) ([]string, bool) {
+// App's, or its own, and whether it has one yet; found is false when there
+// is none called that.
+func (ws *workspaceSpec) joinReach(to string) (setting []string, stored, found bool) {
 	for _, w := range ws.Spec.Workloads {
 		if w["id"] == to || stackOf(w) == to {
-			l, _ := storedReach(w)
-			return l, true
+			l, stored := storedReach(w)
+			return l, stored, true
 		}
 	}
-	return nil, false
+	return nil, false, false
+}
+
+// notClosedYet says the platform hasn't closed this workspace yet: a
+// resource that isn't a database has no setting (the platform writes every
+// one before it closes a workspace). Until then a database, and a resource
+// with no setting, may still be reached from the whole workspace.
+func (ws *workspaceSpec) notClosedYet() bool {
+	for _, w := range ws.Spec.Workloads {
+		if w["type"] == "storage" {
+			continue
+		}
+		if _, stored := storedReach(w); !stored {
+			return true
+		}
+	}
+	return false
 }
 
 func block(w map[string]any, name string) map[string]any {
@@ -310,15 +333,20 @@ func strs(v any) []string {
 	return out
 }
 
-// storedReach is a resource's setting. One the API has never written is
-// reached from the whole workspace until the platform closes it.
+// storedReach is a resource's setting, and false when the platform has
+// never written one: then it is nil, never "*" (it may be reached from the
+// whole workspace until the platform closes it, but it lets nothing in on
+// its own account).
 func storedReach(w map[string]any) ([]string, bool) {
 	v, ok := w["reachableFrom"]
 	if !ok || v == nil {
-		return []string{reachAll}, false
+		return nil, false
 	}
 	return strs(v), true
 }
+
+// notSetNote is what reach says of a resource with no setting yet.
+const notSetNote = "until the platform closes this workspace, the whole workspace may still reach it; this is no setting that lets the whole workspace in (letting anything reach it still needs the user's agreement)"
 
 // reachShow says who may connect to a resource inside the workspace: its
 // setting, what reaches it whatever the setting, and its inside addresses.
@@ -339,7 +367,7 @@ func reachShow(id string) error {
 	setting, stored := storedReach(w)
 	out := map[string]any{"id": id, "reachableFrom": setting, "means": reachMeans(setting)}
 	if !stored {
-		out["note"] = "not set yet: reached from the whole workspace until the platform closes it"
+		out["reachableFrom"], out["means"], out["note"] = nil, "not set yet", notSetNote
 	}
 	if stack := stackOf(w); stack != "" {
 		out["app"] = stack
@@ -347,7 +375,7 @@ func reachShow(id string) error {
 	}
 	also := ws.alsoFrom(w)
 	out["alsoFrom"] = also
-	if len(setting) > 0 || len(also) > 0 {
+	if !stored || len(setting) > 0 || len(also) > 0 {
 		out["addresses"] = insideAddresses(ws.Name+"-"+id, w)
 	}
 	out["change"] = "livellm reach " + id + ` --from a,b | --from "*" | --none`
@@ -355,14 +383,22 @@ func reachShow(id string) error {
 }
 
 // databaseReachShow is reach on a database: no setting, only what links it
-// (or waits for it), and its inside addresses when something does.
+// (or waits for it), and its inside addresses when something does. Until
+// the platform closes the workspace, the whole workspace may still reach it.
 func databaseReachShow(ws *workspaceSpec, id string, w map[string]any) error {
 	also := ws.alsoFrom(w)
 	out := map[string]any{"id": id, "means": "only what links it", "alsoFrom": also}
+	var notes []string
 	if len(also) > 0 {
 		out["addresses"] = insideAddresses(ws.Name+"-"+id, w)
 	} else {
-		out["note"] = "nothing links it yet"
+		notes = append(notes, "nothing links it yet")
+	}
+	if ws.notClosedYet() {
+		notes = append(notes, "the platform hasn't closed this workspace yet: until it does, the whole workspace may still reach it")
+	}
+	if len(notes) > 0 {
+		out["note"] = strings.Join(notes, "; ")
 	}
 	out["change"] = "livellm link APP|MACHINE " + id + " (--remove takes a link out)"
 	return print(out)
@@ -482,6 +518,7 @@ func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 			if !drives {
 				continue
 			}
+			// through is null when the Browser API has no setting yet.
 			through, _ := storedReach(x)
 			add(map[string]any{"id": xid, "why": "drives it", "through": through})
 		}

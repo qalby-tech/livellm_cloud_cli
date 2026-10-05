@@ -32,6 +32,10 @@ func TestLinkRefusesBeforeSending(t *testing.T) {
 		{"nothing there", func() error { return cmdLink([]string{"nothere", "db"}) }, "nothing called"},
 		{"no such database", func() error { return cmdLink([]string{"edge", "nodb"}) }, `no database "nodb"`},
 		{"not a database", func() error { return cmdLink([]string{"edge", "web"}) }, "web is not a database"},
+		{"an app's name with --remove", func() error { return cmdLink([]string{"shop", "db", "--remove"}) },
+			"shop is a Composable App: name the service whose link goes: livellm link web db --remove (linked from web)"},
+		{"an app's name with --remove, nothing linked", func() error { return cmdLink([]string{"shop", "lone", "--remove"}) },
+			"none of its services links lone"},
 		{"named twice", func() error { return cmdLink([]string{"edge", "db", "db"}) }, "named twice"},
 		{"a flag it doesn't take", func() error { return cmdLink([]string{"edge", "db", "--env", "X"}) }, "not --env"},
 		{"reach on a database", func() error { return cmdReach([]string{"db", "--from", "web"}) },
@@ -95,7 +99,7 @@ func TestLinkAtMostEight(t *testing.T) {
 
 // Taking a link out keeps the others as they were (variables and all), and
 // says what still reaches the database: a wait, or another service of the
-// same Composable App linking it.
+// same Composable App linking it or waiting for it.
 func TestLinkRemoveSaysWhatStillReaches(t *testing.T) {
 	ws := `{"name":"ws","spec":{"workloads":[
 		{"id":"api","type":"pod","pod":{"stack":"s","dependsOn":["cache"],"databases":[{"id":"cache"},{"id":"pg","env":{"DB":"url"}}]}},
@@ -125,5 +129,26 @@ func TestLinkRemoveSaysWhatStillReaches(t *testing.T) {
 	}
 	if len(g.writes) != 1 || g.writes[0] != `PATCH /v1/workloads/api2 {"pod":{"databases":[]}}` {
 		t.Errorf("sent %v", g.writes)
+	}
+}
+
+// A sibling that waits for the database keeps the whole Composable App on
+// it, the service just unlinked included.
+func TestLinkRemoveSiblingWaits(t *testing.T) {
+	ws := `{"name":"ws","spec":{"workloads":[
+		{"id":"api","type":"pod","pod":{"stack":"s","databases":[{"id":"cache"}]}},
+		{"id":"api2","type":"pod","pod":{"stack":"s","dependsOn":["cache"]}},
+		{"id":"cache","type":"storage","storage":{"engine":"redis"}}]}}`
+	g := newGoldenAPI(t, map[string]string{"GET /v1/workspace": ws})
+	out, _, err := captured(t, func() error { return cmdLink([]string{"api", "--remove", "cache"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.writes) != 1 || g.writes[0] != `PATCH /v1/workloads/api {"pod":{"databases":[]}}` {
+		t.Errorf("sent %v", g.writes)
+	}
+	note, _ := printed(t, out)["note"].(string)
+	if !strings.Contains(note, "still reached: api2 of s waits for cache (dependsOn), and the whole app with it") {
+		t.Errorf("note %q", note)
 	}
 }

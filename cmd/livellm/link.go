@@ -167,6 +167,28 @@ func cmdLink(args []string) error {
 		return err
 	}
 	w := ws.find(id)
+	var byApp string // a Composable App's name, resolved to a service
+	if w == nil {
+		if svcs := ws.services(id); len(svcs) > 0 {
+			if remove {
+				var linking []string
+				for _, x := range svcs {
+					for _, d := range dbs {
+						if linksTo(x, d) {
+							linking = append(linking, x["id"].(string))
+							break
+						}
+					}
+				}
+				if len(linking) == 0 {
+					return fmt.Errorf("%s is a Composable App: name the service whose link goes (none of its services links %s)", id, strings.Join(dbs, ", "))
+				}
+				return fmt.Errorf("%s is a Composable App: name the service whose link goes: livellm link %s %s --remove (linked from %s)", id, linking[0], strings.Join(dbs, " "), strings.Join(linking, ", "))
+			}
+			byApp, w = id, svcs[0]
+			id, _ = w["id"].(string)
+		}
+	}
 	if w == nil {
 		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
 	}
@@ -270,23 +292,32 @@ func cmdLink(args []string) error {
 	if stack := stackOf(w); stack != "" {
 		out["app"] = stack
 		if !remove {
+			if byApp != "" {
+				notes = append(notes, "linked from "+id+", the first service of "+stack)
+			}
 			notes = append(notes, "the whole Composable App "+stack+" reaches "+strings.Join(changed, ", "))
 		}
 	}
 	if remove {
 		// What still reaches a database after the link went: a wait, or
-		// another service of the same Composable App that links it.
-		p := block(w, "pod")
+		// another service of the same Composable App that links it or waits
+		// for it (either brings the whole app, this one included).
 		for _, d := range changed {
-			for _, dep := range strs(p["dependsOn"]) {
-				if dep == d {
-					notes = append(notes, id+" still waits for "+d+" (dependsOn), which reaches it too")
-				}
+			if waitsFor(w, d) {
+				notes = append(notes, id+" still waits for "+d+" (dependsOn), which reaches it too")
 			}
 			if stack := stackOf(w); stack != "" {
 				for _, x := range ws.Spec.Workloads {
-					if xid, _ := x["id"].(string); xid != id && stackOf(x) == stack && linksTo(x, d) {
-						notes = append(notes, "still reached: "+xid+" of "+stack+" links "+d)
+					xid, _ := x["id"].(string)
+					if xid == id || stackOf(x) != stack {
+						continue
+					}
+					if linksTo(x, d) {
+						notes = append(notes, "still reached: "+xid+" of "+stack+" links "+d+", and the whole app with it")
+						break
+					}
+					if waitsFor(x, d) {
+						notes = append(notes, "still reached: "+xid+" of "+stack+" waits for "+d+" (dependsOn), and the whole app with it")
 						break
 					}
 				}
@@ -297,6 +328,31 @@ func cmdLink(args []string) error {
 		out["note"] = strings.Join(notes, "; ")
 	}
 	return print(out)
+}
+
+// waitsFor says whether an app waits for d (pod.dependsOn).
+func waitsFor(w map[string]any, d string) bool {
+	if w["type"] != "pod" {
+		return false
+	}
+	for _, dep := range strs(block(w, "pod")["dependsOn"]) {
+		if dep == d {
+			return true
+		}
+	}
+	return false
+}
+
+// services are the services of the Composable App called name, in the
+// workspace's order; none when no app is called that.
+func (ws *workspaceSpec) services(name string) []map[string]any {
+	var out []map[string]any
+	for _, w := range ws.Spec.Workloads {
+		if stackOf(w) == name {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // linksTo says whether a resource links the database d.

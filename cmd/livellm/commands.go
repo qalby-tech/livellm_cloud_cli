@@ -589,7 +589,11 @@ func cmdCreate(args []string) error {
 			if err != nil {
 				return err
 			}
-			if had, ok := ws.joinReach(to); ok && !sameNames(anyList(had), reach.list) {
+			had, stored, ok := ws.joinReach(to)
+			if ok && !stored {
+				return fmt.Errorf("--join %s: %s has no setting yet; leave --reachable-from out, or set it for the whole app first: livellm reach %s --from …", to, to, to)
+			}
+			if ok && !sameNames(anyList(had), reach.list) {
 				return fmt.Errorf("--join %s: the new services take %s's setting (reachable from %s); leave --reachable-from out, or change it for the whole app first: livellm reach %s --from …",
 					to, to, reachSays(had), to)
 			}
@@ -920,12 +924,12 @@ func cmdRemove(args []string) error {
 	}
 	fs := flag.NewFlagSet("rm", flag.ExitOnError)
 	yes := fs.Bool("y", false, "don't ask")
-	withDBs := fs.Bool("with-databases", false, "an app: also delete the databases made with it that no other app uses")
+	withDBs := fs.Bool("with-databases", false, "an app: also delete the databases made with it that nothing else uses (no other app, machine or Desktop App)")
 	force := fs.Bool("force", false, "delete even though another resource's settings name it (an app, machine or Desktop App that links it, or an app that waits for it, has to change first)")
 	_ = fs.Parse(rest)
 	question := fmt.Sprintf("Delete %s and its disk? This can't be undone.", id)
 	if *withDBs {
-		question = fmt.Sprintf("Delete %s and its disk, and the databases made with it that no other app uses, with their data? This can't be undone.", id)
+		question = fmt.Sprintf("Delete %s and its disk, and the databases made with it that nothing else uses, with their data? This can't be undone.", id)
 	}
 	if !*yes && !confirm(question) {
 		return fmt.Errorf("nothing was deleted")
