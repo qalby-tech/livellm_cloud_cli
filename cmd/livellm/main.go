@@ -44,16 +44,18 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              (a location takes a host that is ready and schedulable)
 
   livellm create TYPE -f FILE                create a resource from a JSON file
-          [--reachable-from a,b|'*'|none]    which other resources here may connect to it (left out: none)
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
                                              or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
                                              set ID -f with {"<block>": {"placement": null}}: automatic again
+          [--reachable-from a,b|'*'|'']      which other resources here may connect to it ('' or left out: nothing)
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
                                              a stack named after itself and restarts once)
-          [--reachable-from a,b|'*'|none]    who else here may connect to the app (its services always reach
-                                             each other, and its databases are reached by the apps linking them)
+          [--reachable-from a,b|'*'|'']      who else here may connect to the app (its services always reach
+                                             each other, and its databases are reached by the apps linking them);
+                                             with --join they take the app's own (another value is refused;
+                                             to change it for the whole app: livellm reach APP)
   livellm create --template T --id NEW       create from a saved template (a Composable App: --id is its name)
           [--secret PATH=VALUE] [--secret-env PATH=VAR] [-f FILE]
                                              the secrets it needs: API_KEY=…, credentials.password=…
@@ -105,7 +107,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              a Composable App takes it on every service. New resources
                                              start with nothing. Letting more in: ask the user first;
                                              a key or an agent also needs Network (a person turns it on),
-                                             unless it made both resources
+                                             unless it made both resources; letting the whole workspace
+                                             in always needs it
 
   Ask the user and wait for their agreement before you change a browser's proxies
   (set, clear, remove, rotate, or a create/set file carrying proxy settings), or
@@ -113,7 +116,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   a profile holds sign-ins.
   livellm create browser --id NAME [-f FILE] [--locale ru-RU] [--timezone Europe/Moscow]
           [--profile FILE [--profile-password-env VAR]] [--engine chrome|camoufox]
-          [--reachable-from a,b|'*'|none]
+          [--reachable-from a,b|'*'|'']
                                              a browser; with --profile it starts with that exported profile;
                                              the engine is Chrome unless --engine camoufox, and can't change later
   livellm browser engines                    the browser engines this platform offers
@@ -152,7 +155,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              one address over several browsers
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
       [--host H | --region R]                where it runs (automatic when left out)
-      [--reachable-from a,b|'*'|none]        which other resources here may use it (left out: none;
+      [--reachable-from a,b|'*'|'']          which other resources here may use it (left out: nothing;
                                              its browsers are reached through it)
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser

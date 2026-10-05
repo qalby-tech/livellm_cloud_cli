@@ -124,6 +124,9 @@ func browserAPICreate(args []string) error {
 	fs.String("region", "", "run it on any host in this region")
 	reach := addReachFlag(fs)
 	_ = fs.Parse(rest)
+	if err := reachLeftovers(fs, reach); err != nil {
+		return err
+	}
 	placement, err := placementFlags(fs)
 	if err != nil {
 		return err

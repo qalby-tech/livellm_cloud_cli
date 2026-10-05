@@ -11,20 +11,29 @@ platform and attaches them to the GitHub release.
   being reached from the whole workspace.
 - `livellm reach ID` shows the setting, what reaches the resource whatever it
   says (`alsoFrom`: `same app`, `links it`, `waits for it`, `drives it`, with
-  `through` for a browser driven by a Browser API) and its inside addresses.
+  `through` for a browser driven by a Browser API, and `via` for the services
+  of a Composable App one of whose services links it) and its inside addresses
+  (`inStack` on every port of a Composable App's service).
   It reads the workspace only: it never holds a machine or hands out a token.
 - `livellm reach ID --from a,b | --from '*' | --none` changes it (a PATCH of
-  `reachableFrom`; a Composable App takes it on every service).
-- `--reachable-from a,b|'*'|none` on `create` (every type, `create browser
+  `reachableFrom`; a Composable App takes it on every service). Names that
+  aren't there and words left after the list are refused before anything is
+  sent.
+- `--reachable-from a,b|'*'|''` on `create` (every type, `create browser
   --id` and `-f` bodies), on each app of `create apps` (its databases are
-  reached by the apps linking them) and on `browser-api create`. Left out,
+  reached by the apps linking them) and on `browser-api create`; `''` is
+  nothing (there is no `none` keyword: it may be a resource's name). Left out,
   nothing is sent: the same request as before, and the resource starts closed.
+  With `create apps --join APP`, the new services take the app's setting: a
+  different `--reachable-from` is refused (change the whole app with `reach`).
   A settings file that names another `reachableFrom` is refused, not
-  overridden. `--template` takes none.
+  overridden, and so are words left after the list (`--reachable-from web,
+  box`). `--template` takes none.
 - A refusal with `code: network_permission` (403, exit 2) says to ask the user
   first, and where a person turns on Network: the Keys page for a key, the
-  Agents page for an agent. A key or agent that made both resources needs no
-  permission, nor does narrowing.
+  Agents page for an agent. A key or agent needs no permission to let one
+  resource it made reach another it made, nor to narrow; letting the whole
+  workspace in always needs Network.
 - `connect` prints the API's `inside` block when it sends one, and a line on
   stderr saying who may reach the resource.
 - `api-keys create|set --permissions` names `network` too.

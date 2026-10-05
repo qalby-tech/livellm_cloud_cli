@@ -17,26 +17,23 @@ import (
 // browser) the Browser API that drives it.
 //
 // Letting more in takes the Network permission for an API key or an agent,
-// unless that key or agent made both resources; narrowing never does. The
-// agent asks the person first.
+// unless that key or agent made both resources; letting the whole workspace
+// in always takes it, and narrowing never does. The agent asks the person
+// first.
 
 const reachAll = "*"
 
 // reachList reads a list of names: "a,b" names them, "*" is the whole
-// workspace, "none" (or nothing at all) is an empty list.
+// workspace, and an empty value is an empty list. There is no keyword for
+// nothing: "none" is a name a resource may have.
 func reachList(s string) ([]string, error) {
 	out := []string{}
-	if strings.TrimSpace(s) == "none" {
-		return out, nil
-	}
 	seen := map[string]bool{}
 	for _, n := range strings.Split(s, ",") {
 		n = strings.TrimSpace(n)
 		switch {
 		case n == "":
 			continue
-		case n == "none":
-			return nil, fmt.Errorf("none goes alone")
 		case seen[n]:
 			return nil, fmt.Errorf("%s is named twice", n)
 		}
@@ -68,8 +65,17 @@ func (r *reachFlag) Set(v string) error {
 
 func addReachFlag(fs *flag.FlagSet) *reachFlag {
 	r := &reachFlag{}
-	fs.Var(r, "reachable-from", `which other resources here may connect to it: ids, a Composable App's name, "*" for the whole workspace, or none (left out: none)`)
+	fs.Var(r, "reachable-from", `which other resources here may connect to it: ids or a Composable App's name, comma-separated, "*" for the whole workspace, or '' for nothing (left out: nothing; with --join, the app's own)`)
 	return r
+}
+
+// reachLeftovers refuses words left after the flags when --reachable-from was
+// given: "--reachable-from web, box" would otherwise send web alone.
+func reachLeftovers(fs *flag.FlagSet, r *reachFlag) error {
+	if r == nil || !r.set || fs.NArg() == 0 {
+		return nil
+	}
+	return fmt.Errorf("%q is left over: separate the names in --reachable-from with commas, no spaces (or quote the list)", fs.Arg(0))
 }
 
 // withReach puts --reachable-from into a create body. A settings file that
@@ -109,14 +115,30 @@ func sameNames(v any, want []string) bool {
 	return true
 }
 
+func anyList(l []string) []any {
+	out := make([]any, len(l))
+	for i, x := range l {
+		out[i] = x
+	}
+	return out
+}
+
 func describeReach(l []string) string {
 	switch {
 	case len(l) == 0:
-		return "none"
+		return "nothing"
 	case len(l) == 1 && l[0] == reachAll:
 		return `"*"`
 	}
 	return strings.Join(l, ",")
+}
+
+// reachSays is a setting in words, its names when it has some.
+func reachSays(l []string) string {
+	if len(l) == 0 || l[0] == reachAll {
+		return reachMeans(l)
+	}
+	return strings.Join(l, ", ")
 }
 
 // reachMeans says a setting in words.
@@ -142,7 +164,7 @@ func networkNext(err error) error {
 		where = "for this key on the console's Keys page"
 	}
 	p.Next = "letting resources reach each other needs the user's agreement: ask them first; only a person turns on Network " + where +
-		" (no permission is needed for resources this key or agent made itself, nor to narrow)"
+		" (narrowing needs none, nor does one resource this key or agent made reaching another it made; letting the whole workspace in always does)"
 	return err
 }
 
@@ -155,6 +177,9 @@ func cmdReach(args []string) error {
 	from := fs.String("from", "", `let these reach it: ids or Composable App names, comma-separated, or "*" for the whole workspace`)
 	none := fs.Bool("none", false, "let nothing else in the workspace reach it")
 	_ = fs.Parse(rest)
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%q is left over: separate the names in --from with commas, no spaces (or quote the list)", fs.Arg(0))
+	}
 	given := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "from" {
@@ -183,6 +208,14 @@ func cmdReach(args []string) error {
 	w := ws.find(id)
 	if w == nil {
 		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
+	}
+	for _, n := range list {
+		if n != reachAll && !ws.names(n) {
+			if n == "none" {
+				return fmt.Errorf(`there is no resource "none" here; --none lets nothing in`)
+			}
+			return fmt.Errorf("there is no resource %q here (ids and Composable App names) — try livellm ls", n)
+		}
 	}
 	if err := patchWorkload(id, map[string]any{"reachableFrom": list}); err != nil {
 		return err
@@ -219,6 +252,28 @@ func (ws *workspaceSpec) find(id string) map[string]any {
 		}
 	}
 	return nil
+}
+
+// names says whether n is a resource's id or a Composable App's name.
+func (ws *workspaceSpec) names(n string) bool {
+	for _, w := range ws.Spec.Workloads {
+		if w["id"] == n || stackOf(w) == n {
+			return true
+		}
+	}
+	return false
+}
+
+// joinReach is the setting of the resource --join names: its Composable
+// App's, or its own; false when there is none called that.
+func (ws *workspaceSpec) joinReach(to string) ([]string, bool) {
+	for _, w := range ws.Spec.Workloads {
+		if w["id"] == to || stackOf(w) == to {
+			l, _ := storedReach(w)
+			return l, true
+		}
+	}
+	return nil, false
 }
 
 func block(w map[string]any, name string) map[string]any {
@@ -302,12 +357,48 @@ func (ws *workspaceSpec) group(w map[string]any) map[string]bool {
 }
 
 // alsoFrom are the resources that reach w whatever its setting: the other
-// services of its Composable App, the apps that link it or wait for it (with
-// their whole Composable App), and the Browser APIs that drive it (and,
+// services of its Composable App, the apps that link it or wait for it (each
+// with its whole Composable App: a service that doesn't link it itself names
+// the one that does in "via"), and the Browser APIs that drive it (and,
 // through them, whatever reaches them).
 func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 	target := ws.group(w)
 	id, _ := w["id"].(string)
+	// Why each app outside w's group reaches it: by its own link, or by a
+	// link from its Composable App (by stack: the first service that links).
+	linkWhy := func(x map[string]any) string {
+		p := block(x, "pod")
+		if ds, ok := p["databases"].([]any); ok {
+			for _, d := range ds {
+				if m, ok := d.(map[string]any); ok {
+					if did, _ := m["id"].(string); target[did] {
+						return "links it"
+					}
+				}
+			}
+		}
+		for _, dep := range strs(p["dependsOn"]) {
+			if target[dep] {
+				return "waits for it"
+			}
+		}
+		return ""
+	}
+	type link struct{ id, why string }
+	byStack := map[string]link{}
+	for _, x := range ws.Spec.Workloads {
+		xid, _ := x["id"].(string)
+		if x["type"] != "pod" || target[xid] {
+			continue
+		}
+		if s := stackOf(x); s != "" {
+			if _, ok := byStack[s]; !ok {
+				if why := linkWhy(x); why != "" {
+					byStack[s] = link{xid, why}
+				}
+			}
+		}
+	}
 	out := []map[string]any{}
 	seen := map[string]bool{}
 	add := func(e map[string]any) {
@@ -328,30 +419,23 @@ func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 		}
 		switch x["type"] {
 		case "pod":
-			p := block(x, "pod")
-			var why string
-			if ds, ok := p["databases"].([]any); ok {
-				for _, d := range ds {
-					if m, ok := d.(map[string]any); ok {
-						if did, _ := m["id"].(string); target[did] {
-							why = "links it"
-						}
-					}
-				}
-			}
-			if why == "" {
-				for _, dep := range strs(p["dependsOn"]) {
-					if target[dep] {
-						why = "waits for it"
-					}
+			why := linkWhy(x)
+			s := stackOf(x)
+			var via string
+			if why == "" && s != "" {
+				if l, ok := byStack[s]; ok {
+					why, via = l.why, l.id
 				}
 			}
 			if why == "" {
 				continue
 			}
 			e := map[string]any{"id": xid, "why": why}
-			if s := stackOf(x); s != "" {
+			if s != "" {
 				e["app"] = s
+			}
+			if via != "" {
+				e["via"] = via
 			}
 			add(e)
 		case browserAPIType:
@@ -383,7 +467,15 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 	switch {
 	case t == "pod":
 		p := block(w, "pod")
-		host, _ := p["hostname"].(string)
+		// The services of a Composable App find each other by hostname (the
+		// id unless it names one), on every port, raw ones too.
+		var host string
+		if stackOf(w) != "" {
+			host, _ = p["hostname"].(string)
+			if host == "" {
+				host, _ = w["id"].(string)
+			}
+		}
 		out := []map[string]any{}
 		ports, _ := p["ports"].([]any)
 		for _, x := range ports {
@@ -392,8 +484,7 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 			if n == 0 {
 				continue
 			}
-			// Raw TCP/UDP ports are on <res>-raw; the others on <res>, and
-			// for the services of its Composable App at its hostname.
+			// Raw TCP/UDP ports are on <res>-raw; the others on <res>.
 			internal, _ := pm["internal"].(bool)
 			udp, _ := pm["udp"].(bool)
 			tcp, _ := pm["tcp"].(bool)
@@ -408,7 +499,7 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 			if name, _ := pm["name"].(string); name != "" {
 				e["name"] = name
 			}
-			if host != "" && !raw {
+			if host != "" {
 				e["inStack"] = fmt.Sprintf("%s:%d", host, int(n))
 			}
 			out = append(out, e)

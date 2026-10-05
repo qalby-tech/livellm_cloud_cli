@@ -284,10 +284,14 @@ services of its Composable App, the apps that link it (`databases`) or wait for
 it (`dependsOn`), and, a browser, the Browser API that drives it; `reach`
 lists them under `alsoFrom` (`same app`, `links it`, `waits for it`, `drives
 it`, with `through`: what may reach the browser through that Browser API, whose
-inside address takes no key). Public addresses keep their own settings.
+inside address takes no key). An app that links it or waits for it brings its
+whole Composable App: the services that don't link it themselves name the one
+that does in `via`. Public addresses keep their own settings.
 `livellm connect ID` prints the API's own `inside` block. A resource made
-before this came in is reached from the whole workspace, as before, until it is
-changed.
+before this came in is reached from the whole workspace, as before: other
+edits keep that, and only a change to its own setting (`reach`, or
+`reachableFrom` in a write) narrows it. With `create apps --join APP` the new
+services take the app's setting; `--reachable-from ''` means nothing.
 
 Before you let a resource reach another (`--from`, `--reachable-from`, a
 database link, `dependsOn`, or a browser put in a Browser API), ask the user
@@ -296,8 +300,10 @@ already lets the whole workspace in. Letting the whole workspace in always
 needs their agreement. An API key or an agent also needs the Network
 permission for this, which only a person turns on (on the console's Keys page
 for a key, the Agents page for an agent); without it the answer is a 403 with
-`code: network_permission`, and `livellm` says what to do next. Narrowing or
-closing needs nothing.
+`code: network_permission`, and `livellm` says what to do next. Network isn't
+needed for one resource the key or agent made to reach another it made, but
+letting the whole workspace in always takes it. Narrowing or closing needs
+nothing.
 
 `monitoring` prints every resource (up or down, since when, uptime over 24
 hours and 7 days, processor, memory and disk use) and the alerts: open ones

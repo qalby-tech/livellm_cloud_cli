@@ -485,6 +485,9 @@ func cmdCreate(args []string) error {
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
 	reach := addReachFlag(fs)
 	_ = fs.Parse(rest)
+	if err := reachLeftovers(fs, reach); err != nil {
+		return err
+	}
 	// The kind first: an --engine on anything but a browser is refused as
 	// such, whatever its value.
 	if strings.TrimSpace(*engineArg) != "" && kind != "browser" {
@@ -545,7 +548,19 @@ func cmdCreate(args []string) error {
 			}
 		}
 		// A Composable App has one setting: it goes on every app (its
-		// databases are reached by the apps that link them).
+		// databases are reached by the apps that link them). Joining an
+		// app, the new services take its setting; another value would
+		// change it for the whole app, which reach does in the open.
+		if to != "" && reach.set {
+			ws, err := readWorkspace()
+			if err != nil {
+				return err
+			}
+			if had, ok := ws.joinReach(to); ok && !sameNames(anyList(had), reach.list) {
+				return fmt.Errorf("--join %s: the new services take %s's setting (reachable from %s); leave --reachable-from out, or change it for the whole app first: livellm reach %s --from …",
+					to, to, reachSays(had), to)
+			}
+		}
 		for _, app := range list {
 			if err := withReach(app, reach); err != nil {
 				return err

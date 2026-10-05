@@ -64,12 +64,18 @@ func TestGoldenInsideAccess(t *testing.T) {
 			return cmdCreate([]string{"pod", "-f", file("p.json", `{"id":"api","image":"nginx"}`), "--reachable-from", "*"})
 		}},
 		{"create-file-reachable-from-none", func() error {
-			return cmdCreate([]string{"storage", "-f", file("s.json", `{"id":"db2","engine":"redis"}`), "--reachable-from", "none"})
+			return cmdCreate([]string{"storage", "-f", file("s.json", `{"id":"db2","engine":"redis"}`), "--reachable-from", ""})
 		}},
 		{"create-apps-reachable-from", func() error {
 			return cmdCreate([]string{"apps", "-f", file("a.json",
 				`{"apps":[{"id":"front","image":"nginx","databases":[{"id":"pg"}]},{"id":"back","image":"busybox"}],"databases":[{"id":"pg","engine":"postgres"}]}`),
 				"--reachable-from", "edge"})
+		}},
+		{"create-apps-join-same-reachable-from", func() error {
+			return cmdCreate([]string{"apps", "-f", file("a.json", `[{"id":"cron","image":"busybox"}]`), "--join", "shop", "--reachable-from", "edge"})
+		}},
+		{"create-apps-join-no-reachable-from", func() error {
+			return cmdCreate([]string{"apps", "-f", file("a.json", `[{"id":"cron","image":"busybox"}]`), "--join", "web"})
 		}},
 		{"create-apps-no-reachable-from", func() error {
 			return cmdCreate([]string{"apps", "-f", file("a.json", `[{"id":"front","image":"nginx"}]`)})
@@ -112,19 +118,20 @@ func TestGoldenInsideAccess(t *testing.T) {
 		}
 	}
 	if *updateGolden {
-		writeGoldenData(t, written, "golden_inside_data_test.go", "goldenInsideWant")
+		writeGoldenData(t, written, "golden_inside_data_test.go", "goldenInsideWant", "GoldenInside")
 	}
 }
 
 func TestReachList(t *testing.T) {
-	ok := map[string]string{"a,b": "a,b", " a , b ": "a,b", "*": "*", "none": "", "": ""}
+	// "none" is a name like any other (a resource may be called that).
+	ok := map[string]string{"a,b": "a,b", " a , b ": "a,b", "*": "*", "none": "none", "a,none": "a,none", "": "", ",": ""}
 	for in, want := range ok {
 		got, err := reachList(in)
 		if err != nil || strings.Join(got, ",") != want || got == nil {
 			t.Errorf("reachList(%q) = %v, %v; want %q", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"*,a", "a,*", "a,a", "a,none"} {
+	for _, in := range []string{"*,a", "a,*", "a,a", "*,*"} {
 		if _, err := reachList(in); err == nil {
 			t.Errorf("reachList(%q) passed", in)
 		}
@@ -138,10 +145,37 @@ func TestReachRefusesBeforeSending(t *testing.T) {
 		{"edge", "--from", ""},
 		{"edge", "--from", "*,web"},
 		{"nothere", "--none"},
+		{"edge", "--from", "web,nothere"},
+		{"edge", "--from", "none"},
+		// "--from web, box": box is left after the flags, and web alone
+		// would be sent.
+		{"edge", "--from", "web,", "box"},
+		{"edge", "box"},
 	} {
 		if err := cmdReach(args); err == nil {
 			t.Errorf("reach %v passed", args)
 		}
+	}
+	if err := cmdReach([]string{"edge", "--from", "none"}); err == nil || !strings.Contains(err.Error(), "--none lets nothing in") {
+		t.Errorf("--from none: %v", err)
+	}
+	f := filepath.Join(t.TempDir(), "a.json")
+	if err := os.WriteFile(f, []byte(`[{"id":"cron","image":"busybox"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		// shop is reachable from edge: joining it with another value would
+		// change the whole app (here: close it).
+		{"apps", "-f", f, "--join", "shop", "--reachable-from", ""},
+		{"apps", "-f", f, "--join", "web", "--reachable-from", "*"},
+		{"pod", "-f", f, "--reachable-from", "web,", "box"},
+	} {
+		if err := cmdCreate(args); err == nil {
+			t.Errorf("create %v passed", args)
+		}
+	}
+	if err := cmdBrowserAPI([]string{"create", "p3", "--browsers", "b1", "--reachable-from", "edge,", "box"}); err == nil {
+		t.Error("browser-api create with a word left over passed")
 	}
 	if len(g.writes) != 0 {
 		t.Errorf("sent %v", g.writes)
@@ -199,5 +233,21 @@ func TestNetworkPermissionNext(t *testing.T) {
 	named := &problem{Status: 403, Msg: "no", Code: "network_permission", Next: "the API's own"}
 	if networkNext(named); named.Next != "the API's own" {
 		t.Errorf("the API's next step was replaced: %q", named.Next)
+	}
+}
+
+// A Composable App's service with no hostname is found by its stack mates at
+// its id, on every port.
+func TestInsideAddressesStackDefaultHostname(t *testing.T) {
+	w := map[string]any{"id": "api", "type": "pod", "pod": map[string]any{"stack": "shop",
+		"ports": []any{map[string]any{"name": "http", "port": float64(80)}, map[string]any{"name": "raw", "port": float64(9000), "tcp": true}}}}
+	got := insideAddresses("ws-api", w)
+	if len(got) != 2 || got[0]["inStack"] != "api:80" || got[1]["inStack"] != "api:9000" || got[1]["host"] != "ws-api-raw" {
+		t.Errorf("%v", got)
+	}
+	lone := map[string]any{"id": "api", "type": "pod", "pod": map[string]any{"hostname": "x",
+		"ports": []any{map[string]any{"name": "http", "port": float64(80)}}}}
+	if got := insideAddresses("ws-api", lone); got[0]["inStack"] != nil {
+		t.Errorf("an app on its own has no stack mates: %v", got)
 	}
 }
