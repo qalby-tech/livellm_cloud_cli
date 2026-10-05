@@ -46,9 +46,12 @@ POST /v1/workloads/controller {"autodiscover":false,"browsers":["b1"],"id":"pool
       {
         "id": "web",
         "why": "links it"
+      },
+      {
+        "id": "desk",
+        "why": "links it"
       }
-    ],
-    "reachableFrom": []
+    ]
   },
   "private": {
     "host": "ws-db-rw",
@@ -58,7 +61,7 @@ POST /v1/workloads/controller {"autodiscover":false,"browsers":["b1"],"id":"pool
   "type": "storage"
 }
 == stderr
-inside the workspace: reachable from nothing else in the workspace; also by web (links it)
+inside the workspace: reached only by what links it: web (links it), desk (links it)
 == writes
 POST /v1/workloads/db/connect {}
 `,
@@ -103,6 +106,25 @@ POST /v1/workloads {"apps":[{"databases":[{"id":"pg"}],"id":"front","image":"ngi
 == writes
 POST /v1/workloads/browser {"id":"shop","reachableFrom":["pool"]}
 `,
+	"create-database-reachable-from-none": `== stdout
+{
+  "created": "db2",
+  "type": "storage"
+}
+== stderr
+a database has no --reachable-from: only what links it reaches it (left out)
+== writes
+POST /v1/workloads/storage {"engine":"redis","id":"db2"}
+`,
+	"create-desktop-database": `== stdout
+{
+  "created": "d2",
+  "type": "desktop"
+}
+== stderr
+== writes
+POST /v1/workloads/desktop {"databases":[{"id":"db"}],"id":"d2"}
+`,
 	"create-file-reachable-from": `== stdout
 {
   "created": "api",
@@ -114,12 +136,157 @@ POST /v1/workloads/pod {"id":"api","image":"nginx","reachableFrom":["*"]}
 `,
 	"create-file-reachable-from-none": `== stdout
 {
-  "created": "db2",
-  "type": "storage"
+  "created": "api2",
+  "type": "pod"
 }
 == stderr
 == writes
-POST /v1/workloads/storage {"engine":"redis","id":"db2","reachableFrom":[]}
+POST /v1/workloads/pod {"id":"api2","image":"nginx","reachableFrom":[]}
+`,
+	"create-vm-database": `== stdout
+{
+  "created": "m2",
+  "type": "vm-ubuntu"
+}
+== stderr
+== writes
+POST /v1/workloads/vm-ubuntu {"databases":[{"id":"lone"},{"id":"cache"},{"id":"db"}],"id":"m2"}
+`,
+	"link-already": `== stdout
+{
+  "databases": [
+    "cache"
+  ],
+  "id": "box",
+  "note": "nothing to add: already linked"
+}
+== stderr
+== writes
+
+`,
+	"link-app": `== stdout
+{
+  "databases": [
+    "cache",
+    "db"
+  ],
+  "id": "edge",
+  "linked": [
+    "db"
+  ],
+  "note": "reach only: no variables, the app doesn't restart"
+}
+== stderr
+== writes
+PATCH /v1/workloads/edge {"pod":{"databases":[{"id":"cache"},{"id":"db"}]}}
+`,
+	"link-app-stack": `== stdout
+{
+  "app": "shop",
+  "databases": [
+    "cache",
+    "lone"
+  ],
+  "id": "worker",
+  "linked": [
+    "cache",
+    "lone"
+  ],
+  "note": "reach only: no variables, the app doesn't restart; the whole Composable App shop reaches cache, lone"
+}
+== stderr
+== writes
+PATCH /v1/workloads/worker {"pod":{"databases":[{"id":"cache"},{"id":"lone"}]}}
+`,
+	"link-desktop": `== stdout
+{
+  "databases": [
+    "db",
+    "cache"
+  ],
+  "id": "desk",
+  "linked": [
+    "cache"
+  ],
+  "note": "reach only: nothing goes into the Desktop App"
+}
+== stderr
+== writes
+PATCH /v1/workloads/desk {"desktop":{"databases":[{"id":"db"},{"id":"cache"}]}}
+`,
+	"link-machine": `== stdout
+{
+  "databases": [
+    "cache",
+    "db"
+  ],
+  "id": "win",
+  "linked": [
+    "cache",
+    "db"
+  ],
+  "note": "reach only: nothing goes into the machine"
+}
+== stderr
+== writes
+PATCH /v1/workloads/win {"vm":{"databases":[{"id":"cache"},{"id":"db"}]}}
+`,
+	"link-remove-machine": `== stdout
+{
+  "databases": [],
+  "id": "box",
+  "removed": [
+    "cache"
+  ]
+}
+== stderr
+== writes
+PATCH /v1/workloads/box {"vm":{"databases":[]}}
+`,
+	"link-remove-not-linked": `== stdout
+{
+  "databases": [
+    "cache"
+  ],
+  "id": "edge",
+  "note": "nothing to take out: not linked: db"
+}
+== stderr
+== writes
+
+`,
+	"link-remove-with-variables": `== stdout
+{
+  "app": "shop",
+  "databases": [],
+  "id": "web",
+  "note": "db's variables leave web: it restarts",
+  "removed": [
+    "db"
+  ]
+}
+== stderr
+== writes
+PATCH /v1/workloads/web {"pod":{"databases":[]}}
+`,
+	"link-some-already": `== stdout
+{
+  "already": [
+    "cache"
+  ],
+  "databases": [
+    "cache",
+    "lone"
+  ],
+  "id": "box",
+  "linked": [
+    "lone"
+  ],
+  "note": "reach only: nothing goes into the machine"
+}
+== stderr
+== writes
+PATCH /v1/workloads/box {"vm":{"databases":[{"id":"cache"},{"id":"lone"}]}}
 `,
 	"reach-set-from": `== stdout
 {
@@ -148,7 +315,7 @@ PATCH /v1/workloads/web {"reachableFrom":[]}
 `,
 	"reach-set-star": `== stdout
 {
-  "id": "db",
+  "id": "edge",
   "means": "the whole workspace",
   "reachableFrom": [
     "*"
@@ -156,33 +323,16 @@ PATCH /v1/workloads/web {"reachableFrom":[]}
 }
 == stderr
 == writes
-PATCH /v1/workloads/db {"reachableFrom":["*"]}
+PATCH /v1/workloads/edge {"reachableFrom":["*"]}
 `,
 	"reach-show-absent": `== stdout
 {
-  "addresses": [
-    {
-      "host": "ws-cache",
-      "port": 6379
-    }
-  ],
-  "alsoFrom": [
-    {
-      "app": "shop",
-      "id": "web",
-      "via": "worker",
-      "why": "waits for it"
-    },
-    {
-      "app": "shop",
-      "id": "worker",
-      "why": "waits for it"
-    }
-  ],
-  "change": "livellm reach cache --from a,b | --from \"*\" | --none",
-  "id": "cache",
+  "addresses": [],
+  "alsoFrom": [],
+  "change": "livellm reach old --from a,b | --from \"*\" | --none",
+  "id": "old",
   "means": "the whole workspace",
-  "note": "not set yet: reached from the whole workspace, as before",
+  "note": "not set yet: reached from the whole workspace until the platform closes it",
   "reachableFrom": [
     "*"
   ]
@@ -217,6 +367,7 @@ PATCH /v1/workloads/db {"reachableFrom":["*"]}
   "app": "shop",
   "change": "livellm reach web --from a,b | --from \"*\" | --none",
   "id": "web",
+  "joins": "a service added to shop reaches every service of it: adding one lets it in (ask the user first)",
   "means": "only these",
   "reachableFrom": [
     "edge"
@@ -314,12 +465,64 @@ PATCH /v1/workloads/db {"reachableFrom":["*"]}
       "id": "worker",
       "via": "web",
       "why": "links it"
+    },
+    {
+      "id": "desk",
+      "why": "links it"
     }
   ],
-  "change": "livellm reach db --from a,b | --from \"*\" | --none",
+  "change": "livellm link APP|MACHINE db (--remove takes a link out)",
   "id": "db",
-  "means": "nothing else in the workspace",
-  "reachableFrom": []
+  "means": "only what links it"
+}
+== stderr
+== writes
+
+`,
+	"reach-show-database-redis": `== stdout
+{
+  "addresses": [
+    {
+      "host": "ws-cache",
+      "port": 6379
+    }
+  ],
+  "alsoFrom": [
+    {
+      "app": "shop",
+      "id": "web",
+      "via": "worker",
+      "why": "waits for it"
+    },
+    {
+      "app": "shop",
+      "id": "worker",
+      "why": "waits for it"
+    },
+    {
+      "id": "edge",
+      "why": "links it"
+    },
+    {
+      "id": "box",
+      "why": "links it"
+    }
+  ],
+  "change": "livellm link APP|MACHINE cache (--remove takes a link out)",
+  "id": "cache",
+  "means": "only what links it"
+}
+== stderr
+== writes
+
+`,
+	"reach-show-database-unlinked": `== stdout
+{
+  "alsoFrom": [],
+  "change": "livellm link APP|MACHINE lone (--remove takes a link out)",
+  "id": "lone",
+  "means": "only what links it",
+  "note": "nothing links it yet"
 }
 == stderr
 == writes

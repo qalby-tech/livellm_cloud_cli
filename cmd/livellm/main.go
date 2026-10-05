@@ -47,7 +47,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
                                              or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
                                              set ID -f with {"<block>": {"placement": null}}: automatic again
-          [--reachable-from a,b|'*'|'']      which other resources here may connect to it ('' or left out: nothing)
+          [--reachable-from a,b|'*'|'']      which other resources here may connect to it ('' or left out: nothing;
+                                             not on a database: only what links it reaches it)
+          [--database DB]...                 a machine or a Desktop App: let it reach this database
+                                             (reach only: nothing goes into the machine)
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
@@ -104,11 +107,16 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              drives it) and its inside addresses
   livellm reach ID --from a,b | --from '*' | --none
                                              let these (or the whole workspace, or nothing) reach it;
-                                             a Composable App takes it on every service. New resources
-                                             start with nothing. Letting more in: ask the user first;
-                                             a key or an agent also needs Network (a person turns it on),
-                                             unless it made both resources; letting the whole workspace
-                                             in always needs it
+                                             a Composable App takes it on every service. Every resource
+                                             starts with nothing; a database has no setting: only what
+                                             links it reaches it
+  livellm link ID DB... [--remove]           let an app (its whole Composable App), a machine or a
+                                             Desktop App reach these databases: reach only, no variables,
+                                             nothing restarts (--remove takes links out)
+                                             Letting more in (--from, a link, dependsOn, a service added
+                                             to a Composable App): ask the user first; a key or an agent
+                                             also needs Network (a person turns it on), unless it made
+                                             both resources; letting the whole workspace in always needs it
 
   Ask the user and wait for their agreement before you change a browser's proxies
   (set, clear, remove, rotate, or a create/set file carrying proxy settings), or
@@ -248,6 +256,8 @@ func main() {
 		err = cmdBrowser(args)
 	case "reach":
 		err = cmdReach(args)
+	case "link":
+		err = cmdLink(args)
 	case "browser-api", "browser-apis":
 		err = cmdBrowserAPI(args)
 	case "build":

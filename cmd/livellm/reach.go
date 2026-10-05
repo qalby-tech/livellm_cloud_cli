@@ -12,11 +12,15 @@ import (
 // Every resource has one setting, reachableFrom: [] is nothing, ["*"] the
 // whole workspace (also resources made later), or the ids it names (a
 // Composable App's name, or any of its services, stands for the whole app).
-// New resources start with nothing. Whatever the setting, a resource is
-// reached by its own parts, the apps that link it or wait for it, and (a
-// browser) the Browser API that drives it.
+// Every resource starts with nothing, those made before included. Whatever
+// the setting, a resource is reached by its own parts, the other services of
+// its Composable App (one resource), and (a browser) the Browser API that
+// drives it. A database has no setting: it is reached only by what links it
+// (an app's databases or dependsOn, with its whole Composable App; a
+// machine's or a Desktop App's databases).
 //
-// Letting more in takes the Network permission for an API key or an agent,
+// Letting more in (a setting, a database link, dependsOn, a service added to
+// a Composable App) takes the Network permission for an API key or an agent,
 // unless that key or agent made both resources; letting the whole workspace
 // in always takes it, and narrowing never does. The agent asks the person
 // first.
@@ -65,7 +69,7 @@ func (r *reachFlag) Set(v string) error {
 
 func addReachFlag(fs *flag.FlagSet) *reachFlag {
 	r := &reachFlag{}
-	fs.Var(r, "reachable-from", `which other resources here may connect to it: ids or a Composable App's name, comma-separated, "*" for the whole workspace, or '' for nothing (left out: nothing; with --join, the app's own)`)
+	fs.Var(r, "reachable-from", `which other resources here may connect to it: ids or a Composable App's name, comma-separated, "*" for the whole workspace, or '' for nothing (left out: nothing; with --join, the app's own; not on a database: it is reached by what links it)`)
 	return r
 }
 
@@ -163,7 +167,7 @@ func networkNext(err error) error {
 	if strings.TrimSpace(os.Getenv("LIVELLM_API_KEY")) != "" {
 		where = "for this key on the console's Keys page"
 	}
-	p.Next = "letting resources reach each other needs the user's agreement: ask them first; only a person turns on Network " + where +
+	p.Next = "letting resources reach each other (reachableFrom, a database link, dependsOn, a service added to a Composable App, a browser put in a Browser API) needs the user's agreement: ask them first; only a person turns on Network " + where +
 		" (narrowing needs none, nor does one resource this key or agent made reaching another it made; letting the whole workspace in always does)"
 	return err
 }
@@ -208,6 +212,12 @@ func cmdReach(args []string) error {
 	w := ws.find(id)
 	if w == nil {
 		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
+	}
+	if w["type"] == "storage" {
+		if len(list) > 0 {
+			return databaseReachRefusal(id)
+		}
+		return fmt.Errorf("%s is a database: it has no setting, and only what links it reaches it (livellm link APP %s --remove takes a link out)", id, id)
 	}
 	for _, n := range list {
 		if n != reachAll && !ws.names(n) {
@@ -323,13 +333,17 @@ func reachShow(id string) error {
 	if w == nil {
 		return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
 	}
+	if w["type"] == "storage" {
+		return databaseReachShow(ws, id, w)
+	}
 	setting, stored := storedReach(w)
 	out := map[string]any{"id": id, "reachableFrom": setting, "means": reachMeans(setting)}
 	if !stored {
-		out["note"] = "not set yet: reached from the whole workspace, as before"
+		out["note"] = "not set yet: reached from the whole workspace until the platform closes it"
 	}
 	if stack := stackOf(w); stack != "" {
 		out["app"] = stack
+		out["joins"] = "a service added to " + stack + " reaches every service of it: adding one lets it in (ask the user first)"
 	}
 	also := ws.alsoFrom(w)
 	out["alsoFrom"] = also
@@ -337,6 +351,20 @@ func reachShow(id string) error {
 		out["addresses"] = insideAddresses(ws.Name+"-"+id, w)
 	}
 	out["change"] = "livellm reach " + id + ` --from a,b | --from "*" | --none`
+	return print(out)
+}
+
+// databaseReachShow is reach on a database: no setting, only what links it
+// (or waits for it), and its inside addresses when something does.
+func databaseReachShow(ws *workspaceSpec, id string, w map[string]any) error {
+	also := ws.alsoFrom(w)
+	out := map[string]any{"id": id, "means": "only what links it", "alsoFrom": also}
+	if len(also) > 0 {
+		out["addresses"] = insideAddresses(ws.Name+"-"+id, w)
+	} else {
+		out["note"] = "nothing links it yet"
+	}
+	out["change"] = "livellm link APP|MACHINE " + id + " (--remove takes a link out)"
 	return print(out)
 }
 
@@ -359,24 +387,21 @@ func (ws *workspaceSpec) group(w map[string]any) map[string]bool {
 // alsoFrom are the resources that reach w whatever its setting: the other
 // services of its Composable App, the apps that link it or wait for it (each
 // with its whole Composable App: a service that doesn't link it itself names
-// the one that does in "via"), and the Browser APIs that drive it (and,
-// through them, whatever reaches them).
+// the one that does in "via"), the machines and Desktop Apps that link it,
+// and the Browser APIs that drive it (and, through them, whatever reaches
+// them).
 func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 	target := ws.group(w)
 	id, _ := w["id"].(string)
 	// Why each app outside w's group reaches it: by its own link, or by a
 	// link from its Composable App (by stack: the first service that links).
 	linkWhy := func(x map[string]any) string {
-		p := block(x, "pod")
-		if ds, ok := p["databases"].([]any); ok {
-			for _, d := range ds {
-				if m, ok := d.(map[string]any); ok {
-					if did, _ := m["id"].(string); target[did] {
-						return "links it"
-					}
-				}
+		for _, l := range linksOf(x) {
+			if target[linkID(l)] {
+				return "links it"
 			}
 		}
+		p := block(x, "pod")
 		for _, dep := range strs(p["dependsOn"]) {
 			if target[dep] {
 				return "waits for it"
@@ -417,8 +442,13 @@ func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 			}
 			continue
 		}
-		switch x["type"] {
-		case "pod":
+		xt, _ := x["type"].(string)
+		switch {
+		case xt == "desktop" || strings.HasPrefix(xt, "vm-"):
+			if why := linkWhy(x); why != "" {
+				add(map[string]any{"id": xid, "why": why})
+			}
+		case xt == "pod":
 			why := linkWhy(x)
 			s := stackOf(x)
 			var via string
@@ -438,7 +468,7 @@ func (ws *workspaceSpec) alsoFrom(w map[string]any) []map[string]any {
 				e["via"] = via
 			}
 			add(e)
-		case browserAPIType:
+		case xt == browserAPIType:
 			if w["type"] != "browser" {
 				continue
 			}
@@ -567,17 +597,26 @@ func insideHint(out map[string]any) string {
 	if !ok {
 		return ""
 	}
-	line := "inside the workspace: reachable from " + reachMeans(strs(in["reachableFrom"]))
-	if l := strs(in["reachableFrom"]); len(l) > 0 && l[0] != reachAll {
-		line = "inside the workspace: reachable from " + strings.Join(l, ", ")
-	}
-	if also, ok := in["alsoFrom"].([]any); ok && len(also) > 0 {
-		var parts []string
+	var parts []string
+	if also, ok := in["alsoFrom"].([]any); ok {
 		for _, a := range also {
 			if m, ok := a.(map[string]any); ok {
 				parts = append(parts, fmt.Sprintf("%v (%v)", m["id"], m["why"]))
 			}
 		}
+	}
+	// A database has no setting: only what links it reaches it.
+	if _, set := in["reachableFrom"]; !set && out["type"] == "storage" {
+		if len(parts) == 0 {
+			return "inside the workspace: reached only by what links it, and nothing does yet"
+		}
+		return "inside the workspace: reached only by what links it: " + strings.Join(parts, ", ")
+	}
+	line := "inside the workspace: reachable from " + reachMeans(strs(in["reachableFrom"]))
+	if l := strs(in["reachableFrom"]); len(l) > 0 && l[0] != reachAll {
+		line = "inside the workspace: reachable from " + strings.Join(l, ", ")
+	}
+	if len(parts) > 0 {
 		line += "; also by " + strings.Join(parts, ", ")
 	}
 	return line

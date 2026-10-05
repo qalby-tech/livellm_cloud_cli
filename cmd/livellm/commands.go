@@ -61,8 +61,9 @@ type resource struct {
 	CreatedBy string   `json:"createdBy,omitempty"`
 	Endpoints []string `json:"endpoints,omitempty"`
 	StopsAt   string   `json:"stopsAt,omitempty"`
-	// Databases are an app's links to databases, as its settings hold them;
-	// UsedBy the apps that link a database or wait for it.
+	// Databases are the links of an app, a machine or a Desktop App to
+	// databases, as its settings hold them; UsedBy what links a database or
+	// waits for it.
 	Databases []map[string]any `json:"databases,omitempty"`
 	UsedBy    []string         `json:"usedBy,omitempty"`
 }
@@ -84,6 +85,12 @@ func resources() ([]resource, error) {
 				Pod *struct {
 					Databases []map[string]any `json:"databases"`
 				} `json:"pod"`
+				VM *struct {
+					Databases []map[string]any `json:"databases"`
+				} `json:"vm"`
+				Desktop *struct {
+					Databases []map[string]any `json:"databases"`
+				} `json:"desktop"`
 				Browser *struct {
 					Engine string `json:"engine"`
 				} `json:"browser"`
@@ -123,8 +130,13 @@ func resources() ([]resource, error) {
 		if w.CreatedBy != nil && w.CreatedBy.Name != "" {
 			r.CreatedBy = w.CreatedBy.Name
 		}
-		if w.Pod != nil {
+		switch {
+		case w.Pod != nil:
 			r.Databases = w.Pod.Databases
+		case w.VM != nil:
+			r.Databases = w.VM.Databases
+		case w.Desktop != nil:
+			r.Databases = w.Desktop.Databases
 		}
 		// The engine shows only for a Camoufox browser: a Chrome line stays
 		// as it was, and a Browser API has none (it holds either engine).
@@ -484,9 +496,30 @@ func cmdCreate(args []string) error {
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
 	reach := addReachFlag(fs)
+	var links repeated
+	fs.Var(&links, "database", "a machine or a Desktop App: let it reach this database (repeat it for more; nothing goes into the machine)")
 	_ = fs.Parse(rest)
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
+	}
+	// A database has no setting: only what links it reaches it. Nothing
+	// ('') is what it has anyway, so it isn't sent.
+	if kind == "storage" && reach.set {
+		if len(reach.list) > 0 {
+			id := "it"
+			if raw, err := os.ReadFile(*file); err == nil {
+				var b map[string]any
+				if json.Unmarshal(raw, &b) == nil && b["id"] != nil {
+					id = fmt.Sprint(b["id"])
+				}
+			}
+			return databaseReachRefusal(id)
+		}
+		fmt.Fprintln(os.Stderr, "a database has no --reachable-from: only what links it reaches it (left out)")
+		reach = &reachFlag{}
+	}
+	if len(links) > 0 && linkBlock(kind) != "vm" && linkBlock(kind) != "desktop" {
+		return withMachineLinks(kind, nil, links)
 	}
 	// The kind first: an --engine on anything but a browser is refused as
 	// such, whatever its value.
@@ -566,6 +599,11 @@ func cmdCreate(args []string) error {
 				return err
 			}
 		}
+		for _, db := range dbs {
+			if err := refuseDatabaseReach(db); err != nil {
+				return err
+			}
+		}
 		body := map[string]any{"apps": list}
 		if len(dbs) > 0 {
 			body["databases"] = dbs
@@ -593,7 +631,15 @@ func cmdCreate(args []string) error {
 	if err := withEngine(body, engine); err != nil {
 		return err
 	}
+	if kind == "storage" {
+		if err := refuseDatabaseReach(body); err != nil {
+			return err
+		}
+	}
 	if err := withReach(body, reach); err != nil {
+		return err
+	}
+	if err := withMachineLinks(kind, body, links); err != nil {
 		return err
 	}
 	if kind == "browser" {
@@ -875,7 +921,7 @@ func cmdRemove(args []string) error {
 	fs := flag.NewFlagSet("rm", flag.ExitOnError)
 	yes := fs.Bool("y", false, "don't ask")
 	withDBs := fs.Bool("with-databases", false, "an app: also delete the databases made with it that no other app uses")
-	force := fs.Bool("force", false, "delete even though another app's settings name it (an app that links it or waits for it has to change first)")
+	force := fs.Bool("force", false, "delete even though another resource's settings name it (an app, machine or Desktop App that links it, or an app that waits for it, has to change first)")
 	_ = fs.Parse(rest)
 	question := fmt.Sprintf("Delete %s and its disk? This can't be undone.", id)
 	if *withDBs {

@@ -16,21 +16,23 @@ import (
 
 const insideWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"web","type":"pod","reachableFrom":["edge"],"pod":{"image":"nginx","stack":"shop","hostname":"web",
-		"ports":[{"name":"http","port":8080},{"name":"game","port":7777,"udp":true}],"databases":[{"id":"db","env":"DATABASE_URL"}]}},
+		"ports":[{"name":"http","port":8080},{"name":"game","port":7777,"udp":true}],"databases":[{"id":"db","env":{"DATABASE_URL":"url"}}]}},
 	{"id":"worker","type":"pod","reachableFrom":["edge"],"pod":{"image":"busybox","stack":"shop","dependsOn":["cache"]}},
-	{"id":"edge","type":"pod","reachableFrom":[],"pod":{"image":"nginx","ports":[{"name":"http","port":80}]}},
-	{"id":"db","type":"storage","reachableFrom":[],"storage":{"engine":"postgres"}},
+	{"id":"edge","type":"pod","reachableFrom":[],"pod":{"image":"nginx","ports":[{"name":"http","port":80}],"databases":[{"id":"cache"}]}},
+	{"id":"old","type":"pod","pod":{"image":"nginx"}},
+	{"id":"db","type":"storage","storage":{"engine":"postgres"}},
 	{"id":"cache","type":"storage","storage":{"engine":"redis"}},
+	{"id":"lone","type":"storage","storage":{"engine":"postgres"}},
 	{"id":"b1","type":"browser","reachableFrom":[]},
 	{"id":"pool","type":"controller","reachableFrom":["edge"],"controller":{"autodiscover":false,"browsers":["b1"]}},
 	{"id":"every","type":"controller","controller":{"autodiscover":true}},
-	{"id":"box","type":"vm-ubuntu","reachableFrom":["*"],"vm":{"ports":[{"name":"web","port":8080},{"name":"pg","port":5432,"tcp":true},{"name":"dns","port":53,"udp":true},{"name":"etcd","port":2380,"internal":true}]}},
+	{"id":"box","type":"vm-ubuntu","reachableFrom":["*"],"vm":{"ports":[{"name":"web","port":8080},{"name":"pg","port":5432,"tcp":true},{"name":"dns","port":53,"udp":true},{"name":"etcd","port":2380,"internal":true}],"databases":[{"id":"cache"}]}},
 	{"id":"win","type":"vm-windows","reachableFrom":["box"],"vm":{}},
-	{"id":"desk","type":"desktop","reachableFrom":[]}]}}`
+	{"id":"desk","type":"desktop","reachableFrom":[],"desktop":{"databases":[{"id":"db"}]}}]}}`
 
 const insideConnect = `{"tool":"api","type":"storage","engine":"postgres",
 	"private":{"host":"ws-db-rw","port":5432},
-	"inside":{"reachableFrom":[],"alsoFrom":[{"id":"web","why":"links it"}],
+	"inside":{"alsoFrom":[{"id":"web","why":"links it"},{"id":"desk","why":"links it"}],
 		"addresses":[{"host":"ws-db-rw","port":5432}]}}`
 
 func TestGoldenInsideAccess(t *testing.T) {
@@ -47,7 +49,9 @@ func TestGoldenInsideAccess(t *testing.T) {
 	}{
 		{"reach-show-app", func() error { return cmdReach([]string{"web"}) }},
 		{"reach-show-database-linked", func() error { return cmdReach([]string{"db"}) }},
-		{"reach-show-absent", func() error { return cmdReach([]string{"cache"}) }},
+		{"reach-show-absent", func() error { return cmdReach([]string{"old"}) }},
+		{"reach-show-database-redis", func() error { return cmdReach([]string{"cache"}) }},
+		{"reach-show-database-unlinked", func() error { return cmdReach([]string{"lone"}) }},
 		{"reach-show-browser-driven", func() error { return cmdReach([]string{"b1"}) }},
 		{"reach-show-closed", func() error { return cmdReach([]string{"edge"}) }},
 		{"reach-show-machine", func() error { return cmdReach([]string{"box"}) }},
@@ -55,7 +59,22 @@ func TestGoldenInsideAccess(t *testing.T) {
 		{"reach-show-browser-api", func() error { return cmdReach([]string{"pool"}) }},
 		{"reach-show-desktop", func() error { return cmdReach([]string{"desk"}) }},
 		{"reach-set-from", func() error { return cmdReach([]string{"edge", "--from", "web,box"}) }},
-		{"reach-set-star", func() error { return cmdReach([]string{"db", "--from", "*"}) }},
+		{"reach-set-star", func() error { return cmdReach([]string{"edge", "--from", "*"}) }},
+		{"link-app", func() error { return cmdLink([]string{"edge", "db"}) }},
+		{"link-app-stack", func() error { return cmdLink([]string{"worker", "cache,lone"}) }},
+		{"link-machine", func() error { return cmdLink([]string{"win", "cache", "db"}) }},
+		{"link-desktop", func() error { return cmdLink([]string{"desk", "cache"}) }},
+		{"link-already", func() error { return cmdLink([]string{"box", "cache"}) }},
+		{"link-some-already", func() error { return cmdLink([]string{"box", "cache", "lone"}) }},
+		{"link-remove-with-variables", func() error { return cmdLink([]string{"web", "db", "--remove"}) }},
+		{"link-remove-machine", func() error { return cmdLink([]string{"box", "--remove", "cache"}) }},
+		{"link-remove-not-linked", func() error { return cmdLink([]string{"edge", "--remove", "db"}) }},
+		{"create-vm-database", func() error {
+			return cmdCreate([]string{"vm-ubuntu", "-f", file("v.json", `{"id":"m2","databases":[{"id":"lone"}]}`), "--database", "cache", "--database", "db"})
+		}},
+		{"create-desktop-database", func() error {
+			return cmdCreate([]string{"desktop", "-f", file("d.json", `{"id":"d2"}`), "--database", "db"})
+		}},
 		{"reach-set-none", func() error { return cmdReach([]string{"web", "--none"}) }},
 		{"create-browser-reachable-from", func() error {
 			return cmdCreate([]string{"browser", "--id", "shop", "--reachable-from", "pool"})
@@ -64,7 +83,10 @@ func TestGoldenInsideAccess(t *testing.T) {
 			return cmdCreate([]string{"pod", "-f", file("p.json", `{"id":"api","image":"nginx"}`), "--reachable-from", "*"})
 		}},
 		{"create-file-reachable-from-none", func() error {
-			return cmdCreate([]string{"storage", "-f", file("s.json", `{"id":"db2","engine":"redis"}`), "--reachable-from", ""})
+			return cmdCreate([]string{"pod", "-f", file("p.json", `{"id":"api2","image":"nginx"}`), "--reachable-from", ""})
+		}},
+		{"create-database-reachable-from-none", func() error {
+			return cmdCreate([]string{"storage", "-f", file("s.json", `{"id":"db2","engine":"redis","reachableFrom":[]}`), "--reachable-from", ""})
 		}},
 		{"create-apps-reachable-from", func() error {
 			return cmdCreate([]string{"apps", "-f", file("a.json",
@@ -213,10 +235,13 @@ func TestNetworkPermissionNext(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("LIVELLM_API_URL", srv.URL)
 	t.Setenv("LIVELLM_API_KEY", "llc_test")
-	err := networkNext(cmdReach([]string{"db", "--from", "web"}))
+	err := networkNext(cmdReach([]string{"edge", "--from", "web"}))
 	if err == nil || !strings.Contains(err.Error(), "ask them first") || !strings.Contains(err.Error(), "Keys page") ||
-		!strings.Contains(err.Error(), "can't let web reach db") {
+		!strings.Contains(err.Error(), "can't let web reach db") || !strings.Contains(err.Error(), "a service added to a Composable App") {
 		t.Fatalf("key: %v", err)
+	}
+	if err := networkNext(cmdLink([]string{"edge", "db"})); err == nil || !strings.Contains(err.Error(), "ask them first") {
+		t.Fatalf("link: %v", err)
 	}
 	if exitCode(err) != 2 {
 		t.Errorf("exit %d", exitCode(err))
