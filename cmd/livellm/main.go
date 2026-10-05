@@ -44,6 +44,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              (a location takes a host that is ready and schedulable)
 
   livellm create TYPE -f FILE                create a resource from a JSON file
+          [--reachable-from a,b|'*'|none]    which other resources here may connect to it (left out: none)
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
                                              or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
                                              set ID -f with {"<block>": {"placement": null}}: automatic again
@@ -51,6 +52,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
                                              a stack named after itself and restarts once)
+          [--reachable-from a,b|'*'|none]    who else here may connect to the app (its services always reach
+                                             each other, and its databases are reached by the apps linking them)
   livellm create --template T --id NEW       create from a saved template (a Composable App: --id is its name)
           [--secret PATH=VALUE] [--secret-env PATH=VAR] [-f FILE]
                                              the secrets it needs: API_KEY=…, credentials.password=…
@@ -90,9 +93,19 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm agents [ls] | agents rm ID         agents signed in; sign one out
   livellm api-keys [ls]                      the workspace's API keys
   livellm api-keys create NAME               a new key; its secret is shown once
-  livellm api-keys set ID --permissions billing|none
+  livellm api-keys set ID --permissions billing,network|none
   livellm api-keys rm ID                     revoke one
                                              (permissions are given by a person, in the console)
+
+  livellm reach ID                           who may connect to it inside the workspace: its setting,
+                                             what reaches it anyway (same app, links it, waits for it,
+                                             drives it) and its inside addresses
+  livellm reach ID --from a,b | --from '*' | --none
+                                             let these (or the whole workspace, or nothing) reach it;
+                                             a Composable App takes it on every service. New resources
+                                             start with nothing. Letting more in: ask the user first;
+                                             a key or an agent also needs Network (a person turns it on),
+                                             unless it made both resources
 
   Ask the user and wait for their agreement before you change a browser's proxies
   (set, clear, remove, rotate, or a create/set file carrying proxy settings), or
@@ -100,6 +113,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   a profile holds sign-ins.
   livellm create browser --id NAME [-f FILE] [--locale ru-RU] [--timezone Europe/Moscow]
           [--profile FILE [--profile-password-env VAR]] [--engine chrome|camoufox]
+          [--reachable-from a,b|'*'|none]
                                              a browser; with --profile it starts with that exported profile;
                                              the engine is Chrome unless --engine camoufox, and can't change later
   livellm browser engines                    the browser engines this platform offers
@@ -138,6 +152,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              one address over several browsers
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
       [--host H | --region R]                where it runs (automatic when left out)
+      [--reachable-from a,b|'*'|none]        which other resources here may use it (left out: none;
+                                             its browsers are reached through it)
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser
   livellm browser-api remove NAME BROWSER    take a browser out of it
@@ -227,6 +243,8 @@ func main() {
 		err = cmdSet(args)
 	case "browser", "browsers":
 		err = cmdBrowser(args)
+	case "reach":
+		err = cmdReach(args)
 	case "browser-api", "browser-apis":
 		err = cmdBrowserAPI(args)
 	case "build":
@@ -252,7 +270,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		err = engineNext(err)
+		err = networkNext(engineNext(err))
 		fmt.Fprintln(os.Stderr, "livellm: "+err.Error())
 		os.Exit(exitCode(err))
 	}

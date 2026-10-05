@@ -122,6 +122,7 @@ func browserAPICreate(args []string) error {
 	fs.Var(&auths, "remote-auth", "a remote browser's login header, read from an environment variable: name=ENV_VAR (repeatable); \"Name: value\", or a bare value sent as Authorization; never shown again")
 	fs.String("host", "", "run it on this host (ids from livellm hosts)")
 	fs.String("region", "", "run it on any host in this region")
+	reach := addReachFlag(fs)
 	_ = fs.Parse(rest)
 	placement, err := placementFlags(fs)
 	if err != nil {
@@ -129,6 +130,9 @@ func browserAPICreate(args []string) error {
 	}
 	body, err := browserAPIBody(id, *browsers, *all, remotes, auths, placement)
 	if err != nil {
+		return err
+	}
+	if err := withReach(body, reach); err != nil {
 		return err
 	}
 	if err := call("POST", "/v1/workloads/"+browserAPIType, body, nil); err != nil {

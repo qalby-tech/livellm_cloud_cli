@@ -263,6 +263,42 @@ livellm plan                                    # the plan and what the workspac
 An API key changes the plan (`plan set`, `plan metered on|off`) only when a
 person gave it the billing permission on the console's Keys page.
 
+## Inside the workspace
+
+Resources in a workspace can't reach each other unless the user allows it (a
+Composable App counts as one resource). Each one says who may connect to it:
+nothing (where every new resource starts), the resources it names, or the
+whole workspace (`"*"`, also resources made later).
+
+```sh
+livellm reach nextcloud-db                      # its setting, what reaches it anyway, its inside addresses
+livellm reach nextcloud-db --from nextcloud     # let nextcloud (its whole Composable App) reach it
+livellm reach shared-cache --from '*'           # the whole workspace
+livellm reach nextcloud-db --none               # nothing else in the workspace
+livellm create pod -f api.json --reachable-from web,worker
+livellm create apps -f shop.json --reachable-from edge   # one setting for the whole app
+```
+
+Whatever the setting, a resource is reached by its own parts, the other
+services of its Composable App, the apps that link it (`databases`) or wait for
+it (`dependsOn`), and, a browser, the Browser API that drives it; `reach`
+lists them under `alsoFrom` (`same app`, `links it`, `waits for it`, `drives
+it`, with `through`: what may reach the browser through that Browser API, whose
+inside address takes no key). Public addresses keep their own settings.
+`livellm connect ID` prints the API's own `inside` block. A resource made
+before this came in is reached from the whole workspace, as before, until it is
+changed.
+
+Before you let a resource reach another (`--from`, `--reachable-from`, a
+database link, `dependsOn`, or a browser put in a Browser API), ask the user
+and wait for their agreement, unless you created both or the one reached
+already lets the whole workspace in. Letting the whole workspace in always
+needs their agreement. An API key or an agent also needs the Network
+permission for this, which only a person turns on (on the console's Keys page
+for a key, the Agents page for an agent); without it the answer is a 403 with
+`code: network_permission`, and `livellm` says what to do next. Narrowing or
+closing needs nothing.
+
 `monitoring` prints every resource (up or down, since when, uptime over 24
 hours and 7 days, processor, memory and disk use) and the alerts: open ones
 (no `resolvedAt`) first, then the last 7 days' resolved ones. `emailAlerts`

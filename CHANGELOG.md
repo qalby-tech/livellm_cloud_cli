@@ -3,6 +3,32 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.7.0
+
+- Inside the workspace, resources reach each other only when allowed: each
+  one has `reachableFrom` (nothing, the ids it names, or `"*"` for the whole
+  workspace). New resources start with nothing; resources made before keep
+  being reached from the whole workspace.
+- `livellm reach ID` shows the setting, what reaches the resource whatever it
+  says (`alsoFrom`: `same app`, `links it`, `waits for it`, `drives it`, with
+  `through` for a browser driven by a Browser API) and its inside addresses.
+  It reads the workspace only: it never holds a machine or hands out a token.
+- `livellm reach ID --from a,b | --from '*' | --none` changes it (a PATCH of
+  `reachableFrom`; a Composable App takes it on every service).
+- `--reachable-from a,b|'*'|none` on `create` (every type, `create browser
+  --id` and `-f` bodies), on each app of `create apps` (its databases are
+  reached by the apps linking them) and on `browser-api create`. Left out,
+  nothing is sent: the same request as before, and the resource starts closed.
+  A settings file that names another `reachableFrom` is refused, not
+  overridden. `--template` takes none.
+- A refusal with `code: network_permission` (403, exit 2) says to ask the user
+  first, and where a person turns on Network: the Keys page for a key, the
+  Agents page for an agent. A key or agent that made both resources needs no
+  permission, nor does narrowing.
+- `connect` prints the API's `inside` block when it sends one, and a line on
+  stderr saying who may reach the resource.
+- `api-keys create|set --permissions` names `network` too.
+
 ## 0.6.1
 
 - `api-keys create|set --permissions` names `billing` only. The proxies and

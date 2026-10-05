@@ -269,6 +269,9 @@ func cmdConnect(args []string) error {
 		return err
 	}
 	printConnectHint(out)
+	if h := insideHint(out); h != "" {
+		fmt.Fprintln(os.Stderr, h)
+	}
 	return nil
 }
 
@@ -480,6 +483,7 @@ func cmdCreate(args []string) error {
 	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
+	reach := addReachFlag(fs)
 	_ = fs.Parse(rest)
 	// The kind first: an --engine on anything but a browser is refused as
 	// such, whatever its value.
@@ -499,6 +503,9 @@ func cmdCreate(args []string) error {
 	if kind == "browser" && *file == "" && *newID != "" {
 		body := map[string]any{"id": *newID}
 		if err := withEngine(body, engine); err != nil {
+			return err
+		}
+		if err := withReach(body, reach); err != nil {
 			return err
 		}
 		return createBrowser(body, *locale, *timezone, *profile, *profilePw)
@@ -537,6 +544,13 @@ func cmdCreate(args []string) error {
 				to = wrapped.Join
 			}
 		}
+		// A Composable App has one setting: it goes on every app (its
+		// databases are reached by the apps that link them).
+		for _, app := range list {
+			if err := withReach(app, reach); err != nil {
+				return err
+			}
+		}
 		body := map[string]any{"apps": list}
 		if len(dbs) > 0 {
 			body["databases"] = dbs
@@ -562,6 +576,9 @@ func cmdCreate(args []string) error {
 		return fmt.Errorf("%s isn't valid JSON: %w", *file, err)
 	}
 	if err := withEngine(body, engine); err != nil {
+		return err
+	}
+	if err := withReach(body, reach); err != nil {
 		return err
 	}
 	if kind == "browser" {
