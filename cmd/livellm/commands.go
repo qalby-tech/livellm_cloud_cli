@@ -185,23 +185,15 @@ func cmdStatus(args []string) error {
 	if err := call("GET", "/v1/status", nil, &live); err != nil {
 		return err
 	}
-	var entries []map[string]any
-	if list, ok := live["workloads"].([]any); ok {
-		for _, raw := range list {
-			if w, ok := raw.(map[string]any); ok {
-				entries = append(entries, w)
-			}
-		}
-	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		markEngines(entries)
 		return print(live)
 	}
 	id := args[0]
-	for _, w := range entries {
-		if w["id"] == id {
-			markEngines([]map[string]any{w})
-			return print(w)
+	if list, ok := live["workloads"].([]any); ok {
+		for _, raw := range list {
+			if w, ok := raw.(map[string]any); ok && w["id"] == id {
+				return print(w)
+			}
 		}
 	}
 	return fmt.Errorf("there is nothing called %q here — try livellm ls", id)

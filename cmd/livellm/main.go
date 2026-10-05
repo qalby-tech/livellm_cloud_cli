@@ -100,7 +100,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              the engine is Chrome unless --engine camoufox, and can't change later
   livellm browser engines                    the browser engines this platform offers
                                              (Camoufox is Firefox-based and driven with Playwright, not CDP:
-                                             clients before livellm 0.6 and CDP-only scripts can't drive it)
+                                             CDP-only scripts can't drive it)
   livellm browser locales                    the languages and time zones a browser takes
   livellm browser locale ID                  its language, time zone and location ('' clears one;
           [--locale ru-RU] [--timezone Europe/Moscow] [--languages ru-RU,ru,en]

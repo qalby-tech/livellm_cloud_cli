@@ -190,10 +190,11 @@ const camoufoxWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"foxes","type":"controller","controller":{"engine":"camoufox","autodiscover":true}},
 	{"id":"pool","type":"controller","controller":{"autodiscover":true}}]}}`
 
+// The API's status says engine camoufox for Camoufox ones, nothing for Chrome.
 const camoufoxStatus = `{"workloads":[
-	{"id":"fox","type":"browser","phase":"Running","ready":true},
+	{"id":"fox","type":"browser","engine":"camoufox","phase":"Running","ready":true},
 	{"id":"shop","type":"browser","phase":"Running","ready":true},
-	{"id":"foxes","type":"controller","phase":"Running","ready":true},
+	{"id":"foxes","type":"controller","engine":"camoufox","phase":"Running","ready":true},
 	{"id":"pool","type":"controller","phase":"Running","ready":true}]}`
 
 func engineFake(t *testing.T) *fakeAPI {
@@ -242,16 +243,19 @@ func TestListAndStatusShowCamoufox(t *testing.T) {
 	}
 }
 
-// A status of things that are neither browsers nor Browser APIs reads no
-// settings.
-func TestStatusReadsSettingsOnlyForBrowsers(t *testing.T) {
+// status makes the one call it always made, browsers or not: the engine
+// comes in the API's own answer.
+func TestStatusReadsNoSettings(t *testing.T) {
 	f := newFakeAPI(t)
-	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[{"id":"web","type":"pod","phase":"Running"}]}`)
+	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[{"id":"web","type":"pod","phase":"Running"},{"id":"shop","type":"browser","phase":"Running"}]}`)
 	if err := cmdStatus(nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := cmdStatus([]string{"shop"}); err != nil {
+		t.Fatal(err)
+	}
 	if f.last("GET", "/v1/workspace") != nil {
-		t.Error("status read the workspace for an app")
+		t.Error("status read the workspace")
 	}
 }
 
@@ -286,18 +290,29 @@ func TestEngineRefusalsSayWhatNext(t *testing.T) {
 	}{
 		{422, `{"error":"A browser's engine can't change after creation — make a new browser (its cookies can be imported into it).","code":"engine_fixed"}`,
 			"livellm browser cookies import NEW", "engine can't change"},
+		// A Browser API holds no cookies: a new one is all it takes.
+		{422, `{"error":"A Browser API's engine can't change after creation — make a new Browser API.","code":"engine_fixed"}`,
+			"livellm browser-api create NAME --engine", "Browser API's engine"},
 		{422, `{"error":"This platform doesn't offer Camoufox browsers.","code":"engine_unavailable"}`,
 			"livellm browser engines", "doesn't offer Camoufox"},
 		{422, `{"error":"Camoufox browsers take no extensions yet.","code":"extensions_unsupported"}`,
 			"\"extensions\"", "take no extensions"},
 		{422, `{"error":"Browser API foxes drives Camoufox browsers; shop runs Chrome","code":"engine_mismatch"}`,
 			"its own engine only", "drives Camoufox"},
-		{422, `{"error":"A profile copies only between browsers of one engine: shop runs Chrome, fox runs Camoufox.","code":"engine_mismatch"}`,
-			"import its cookies instead", "profile copies"},
+		// A browser whose id says profile is still a pool refusal.
+		{422, `{"error":"Browser API pool drives Camoufox browsers; profile-b runs Chrome","code":"engine_mismatch"}`,
+			"its own engine only", "profile-b runs Chrome"},
+		{422, `{"error":"Browser API profile-pool drives Camoufox browsers; shop runs Chrome","code":"engine_mismatch"}`,
+			"its own engine only", "profile-pool"},
+		// tenant-api's profile copy across engines.
+		{422, `{"error":"shop runs Chrome and fox runs Camoufox: profiles move only between browsers of one engine — import its cookies instead.","code":"engine_mismatch"}`,
+			"storage_state", "profiles move only"},
 		{422, `{"error":"This profile is from a Chrome browser; this browser runs Camoufox. Profiles move only between browsers of one engine — import its cookies instead.","code":"profile_engine"}`,
-			"livellm browser cookies import ID", "from a Chrome browser"},
-		// No code: the wording tells.
-		{422, `{"error":"This platform doesn't offer Camoufox browsers."}`, "livellm browser engines", "doesn't offer"},
+			"livellm browser cookies import NEW", "from a Chrome browser"},
+		// No code: not taken for an engine refusal by its words, so a
+		// database's engine refusal stays as it came.
+		{422, `{"error":"workloads[0] (db1): a database's engine can't change after creation"}`, "", "database's engine"},
+		{422, `{"error":"This platform doesn't offer Camoufox browsers."}`, "", "doesn't offer"},
 		// The API named the next step: it stays.
 		{422, `{"error":"Camoufox browsers take no extensions yet.","code":"extensions_unsupported","next":"theirs"}`, "theirs", "extensions"},
 		// Not an engine refusal: untouched.

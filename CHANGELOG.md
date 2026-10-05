@@ -17,13 +17,21 @@ platform and attaches them to the GitHub release.
   its `playwright` block (`url`, `headers`, `version`), and one line on stderr:
   `Playwright 1.62: firefox.connect(playwright.url, headers=playwright.headers)`.
 - `ls`, `status` and `browser-api show` say `"engine": "camoufox"` for
-  Camoufox browsers and Browser APIs; Chrome ones print as before.
+  Camoufox browsers and Browser APIs (`status` prints the API's answer, which
+  says it); Chrome ones print as before.
 - The refusals `engine_fixed`, `engine_unavailable`, `extensions_unsupported`,
   `engine_mismatch` and `profile_engine` print the API's message and what to
-  do next.
-- Clients before 0.6 can't drive a Camoufox browser: livellm before 0.6 has
-  no `--engine` and no Playwright hint, and scripts written for a CDP address
-  (`cdp.url`) find none in a Camoufox answer.
+  do next. Cookies move across engines by saving them with Playwright from the
+  old browser (`contexts[0].storage_state(path="cookies.json")`) and `livellm
+  browser cookies import NEW cookies.json`.
+- `create browser --engine camoufox --profile FILE` with a Chrome profile:
+  the browser is made, the profile is refused, and the next step is its
+  cookies (importing the profile again would be refused the same way).
+- `browser profile import --force` covers a profile from a newer Camoufox too.
+- Earlier livellm versions print a Camoufox browser's `connect` answer as it
+  comes (its `playwright` block included), without the hint. Scripts written
+  for a CDP address (`cdp.url`) find none in a Camoufox answer and can't drive
+  it.
 
 ## 0.5.0
 

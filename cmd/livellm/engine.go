@@ -58,41 +58,6 @@ func specEngine(w map[string]any) string {
 	return ""
 }
 
-// markEngines adds "engine": "camoufox" to the live entries of Camoufox
-// browsers and Browser APIs, read from the workspace's settings. A Chrome
-// entry is left as it is, and nothing is read when no entry is a browser or
-// a Browser API.
-func markEngines(entries []map[string]any) {
-	need := false
-	for _, e := range entries {
-		if t := e["type"]; (t == "browser" || t == browserAPIType) && e["engine"] == nil {
-			need = true
-		}
-	}
-	if !need {
-		return
-	}
-	var ws struct {
-		Spec struct {
-			Workloads []map[string]any `json:"workloads"`
-		} `json:"spec"`
-	}
-	if call("GET", "/v1/workspace", nil, &ws) != nil {
-		return
-	}
-	camoufoxIDs := map[any]bool{}
-	for _, w := range ws.Spec.Workloads {
-		if specEngine(w) == camoufox {
-			camoufoxIDs[w["id"]] = true
-		}
-	}
-	for _, e := range entries {
-		if e["engine"] == nil && camoufoxIDs[e["id"]] {
-			e["engine"] = camoufox
-		}
-	}
-}
-
 // browserEngines lists the engines this platform offers; it needs no sign-in.
 func browserEngines([]string) error {
 	var out map[string]any
@@ -126,54 +91,42 @@ func printConnectHint(out map[string]any) {
 	}
 }
 
+// cookiesOver is how a browser's cookies reach a browser of the other
+// engine: there is no cookies export, so they are saved with Playwright from
+// the old browser's contexts[0] and added to the new one.
+const cookiesOver = "save the old browser's cookies with Playwright (livellm connect OLD, then contexts[0].storage_state(path=\"cookies.json\")) and add them: livellm browser cookies import NEW cookies.json"
+
 // engineNexts are what to do after an engine refusal, by the API's code.
 var engineNexts = map[string]string{
-	"engine_fixed":           "make a new browser with the other --engine and bring the cookies over: livellm browser cookies import NEW cookies.json",
+	"engine_fixed":           "make a new browser with the other --engine; to bring its sign-ins over, " + cookiesOver,
 	"engine_unavailable":     "leave out --engine for a Chrome browser; livellm browser engines lists what this platform offers",
 	"extensions_unsupported": "leave \"extensions\" out of a Camoufox browser's settings",
 	"engine_mismatch":        "a Browser API drives browsers of its own engine only (livellm ls shows engine camoufox), and remote browsers go only in a Chrome one",
-	"profile_engine":         "profiles move only between browsers of one engine; import its cookies instead: livellm browser cookies import ID cookies.json",
+	"profile_engine":         cookiesOver,
 }
 
-// engineCodeOf is the engine code of a refusal: the API's code, or its
-// wording when an answer came without one.
-func engineCodeOf(p *problem) string {
-	if _, ok := engineNexts[p.Code]; ok {
-		return p.Code
-	}
-	if p.Code != "" {
-		return ""
-	}
-	m := strings.ToLower(p.Msg)
-	switch {
-	case strings.Contains(m, "engine can't change"):
-		return "engine_fixed"
-	case strings.Contains(m, "doesn't offer camoufox"):
-		return "engine_unavailable"
-	case strings.Contains(m, "take no extensions"):
-		return "extensions_unsupported"
-	case strings.Contains(m, "drives camoufox browsers"), strings.Contains(m, "drives chrome browsers"),
-		strings.Contains(m, "remote browsers go only in a chrome"):
-		return "engine_mismatch"
-	case strings.Contains(m, "profiles move only between browsers of one engine"):
-		return "profile_engine"
-	}
-	return ""
-}
+// engineFixedAPI is the next step when the engine refused is a Browser
+// API's: it holds no cookies, so a new one is all it takes.
+const engineFixedAPI = "make a new Browser API with the other --engine: livellm browser-api create NAME --engine chrome|camoufox --browsers a,b | --all"
 
 // engineNext gives an engine refusal its next step, unless the API named
-// one. Any other error comes back as it was.
+// one. Only a refusal carrying one of the engine codes gets one; any other
+// error (a database's engine refusal among them) comes back as it was.
 func engineNext(err error) error {
 	var p *problem
 	if !asProblem(err, &p) || p.Next != "" {
 		return err
 	}
-	code := engineCodeOf(p)
-	if code == "" {
+	next, ok := engineNexts[p.Code]
+	if !ok {
 		return err
 	}
-	next := engineNexts[code]
-	if code == "engine_mismatch" && strings.Contains(strings.ToLower(p.Msg), "profile") {
+	msg := strings.ToLower(p.Msg)
+	switch {
+	case p.Code == "engine_fixed" && strings.Contains(msg, "browser api"):
+		next = engineFixedAPI
+	case p.Code == "engine_mismatch" && strings.Contains(msg, "profiles move only between browsers of one engine"):
+		// A profile copy across engines, not a Browser API's members.
 		next = engineNexts["profile_engine"]
 	}
 	p.Next = next

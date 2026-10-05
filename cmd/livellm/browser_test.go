@@ -793,3 +793,28 @@ func TestCreateBrowserProfileRetryNamesThePassword(t *testing.T) {
 		t.Errorf("got %v", err)
 	}
 }
+
+// A profile of the other engine after create: the browser is made, and the
+// next step is its cookies, never a profile import that is refused again.
+func TestCreateBrowserProfileOfTheOtherEngine(t *testing.T) {
+	f := newFakeAPI(t)
+	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[{"id":"fox","phase":"Running","ready":true}]}`)
+	f.answers["POST /v1/workloads/fox/profile/import"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"error":"This profile is from a Chrome browser; this browser runs Camoufox. Profiles move only between browsers of one engine — import its cookies instead.","code":"profile_engine"}`))
+	}
+	file := filepath.Join(t.TempDir(), "chrome.llcprofile")
+	_ = os.WriteFile(file, []byte("x"), 0o600)
+	err := engineNext(cmdCreate([]string{"browser", "--id", "fox", "--engine", "camoufox", "--profile", file}))
+	if err == nil {
+		t.Fatal("no error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "profile import") || !strings.Contains(msg, "the browser fox is made") ||
+		!strings.Contains(msg, "livellm browser cookies import NEW cookies.json") {
+		t.Errorf("got %q", msg)
+	}
+	if exitCode(err) != 1 {
+		t.Errorf("exit %d", exitCode(err))
+	}
+}

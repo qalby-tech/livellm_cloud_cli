@@ -147,8 +147,10 @@ a `new_context()` needs `no_viewport=True`. A Camoufox browser takes no
 extensions (uBlock Origin is built in). A Browser API drives browsers of one
 engine, and remote browsers go only in a Chrome one. Profiles move only
 between browsers of one engine; cookies move across (`cookies import` says how
-many it couldn't take as `dropped`). Clients before livellm 0.6, and scripts
-written for a CDP address, can't drive a Camoufox browser.
+many it couldn't take as `dropped`); there is no cookies export, so save them
+from the old browser with Playwright (`contexts[0].storage_state(path="cookies.json")`)
+and `livellm browser cookies import NEW cookies.json`. Scripts written for a CDP
+address can't drive a Camoufox browser.
 
 An app and its databases in one step, linked:
 

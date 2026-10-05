@@ -1091,7 +1091,7 @@ func importProfile(id, file, password string, force bool) (map[string]any, error
 
 func profileImport(args []string) error {
 	fs := flag.NewFlagSet("browser profile import", flag.ExitOnError)
-	force := fs.Bool("force", false, "import a profile from a newer Chrome than the browser runs")
+	force := fs.Bool("force", false, "import a profile from a newer browser version than the browser runs")
 	pwEnv := fs.String("password-env", "", "the file's password, from this variable")
 	pwStdin := fs.Bool("password-stdin", false, "the file's password, from stdin")
 	yes := fs.Bool("y", false, "don't ask")
@@ -1256,6 +1256,13 @@ func createBrowser(body map[string]any, locale, timezone, profile, profilePwEnv 
 	}
 	imported, err := importProfile(id, profile, password, false)
 	if err != nil {
+		// A profile of the other engine never goes in: importing it again
+		// would be refused the same way, so the next step is its cookies.
+		var p *problem
+		if asProblem(err, &p) && p.Code == "profile_engine" && p.Next == "" {
+			p.Next = "the browser " + id + " is made, without the profile; " + engineNexts["profile_engine"]
+			return err
+		}
 		return fmt.Errorf("%w — %s", err, again)
 	}
 	out["profile"] = imported
