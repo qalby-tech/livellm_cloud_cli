@@ -52,13 +52,9 @@ func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 // or every browser, and remote browsers as id=ws-address. auths maps a
 // remote id to the environment variable holding its login header, so the
 // header never appears on the command line or in the shell history.
-// placement says where it runs (automatic when nil). engine is "" or chrome
-// for Chrome browsers (nothing is sent), camoufox for Camoufox browsers.
-func browserAPIBody(id, browsers string, all bool, remotes, auths []string, placement map[string]any, engine string) (map[string]any, error) {
+// placement says where it runs (automatic when nil).
+func browserAPIBody(id, browsers string, all bool, remotes, auths []string, placement map[string]any) (map[string]any, error) {
 	body := map[string]any{"id": id}
-	if engine == camoufox && len(remotes) > 0 {
-		return nil, fmt.Errorf("remote browsers go only in a Chrome Browser API; leave out --remote, or --engine camoufox")
-	}
 	var names []string
 	for _, b := range strings.Split(browsers, ",") {
 		if b = strings.TrimSpace(b); b != "" {
@@ -109,9 +105,6 @@ func browserAPIBody(id, browsers string, all bool, remotes, auths []string, plac
 	if placement != nil {
 		body["placement"] = placement
 	}
-	if engine == camoufox {
-		body["engine"] = camoufox
-	}
 	return body, nil
 }
 
@@ -122,8 +115,7 @@ func browserAPICreate(args []string) error {
 	}
 	fs := flag.NewFlagSet("browser-api create", flag.ExitOnError)
 	browsers := fs.String("browsers", "", "the workspace browsers it drives, comma-separated")
-	all := fs.Bool("all", false, "every browser of its engine in the workspace, including ones made later")
-	engineArg := fs.String("engine", "", "the engine of the browsers it drives: chrome (the default) or camoufox; fixed once made")
+	all := fs.Bool("all", false, "every browser in the workspace, including ones made later")
 	var remotes repeated
 	fs.Var(&remotes, "remote", "a browser running elsewhere: name=wss://address (repeatable)")
 	var auths repeated
@@ -135,11 +127,7 @@ func browserAPICreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	engine, err := engineFlag(*engineArg)
-	if err != nil {
-		return err
-	}
-	body, err := browserAPIBody(id, *browsers, *all, remotes, auths, placement, engine)
+	body, err := browserAPIBody(id, *browsers, *all, remotes, auths, placement)
 	if err != nil {
 		return err
 	}
@@ -179,13 +167,7 @@ func browserAPIShow(args []string) error {
 	}
 	c, _ := w["controller"].(map[string]any)
 	out := map[string]any{"id": id, "browsers": []any{}, "remoteBrowsers": []any{}}
-	isCamoufox := specEngine(w) == camoufox
-	if isCamoufox {
-		out["engine"] = camoufox
-	}
-	if all, _ := c["autodiscover"].(bool); all && isCamoufox {
-		out["drives"] = "every Camoufox browser in the workspace"
-	} else if all {
+	if all, _ := c["autodiscover"].(bool); all {
 		out["drives"] = "every browser in the workspace"
 	} else {
 		out["drives"] = "only these"

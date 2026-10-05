@@ -132,8 +132,6 @@ const usage = `livellm — your machines, browsers, apps and databases.
 
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
-      [--engine chrome|camoufox]             the engine of the browsers it drives (Chrome when left out;
-                                             --all is every browser of that engine; remote ones: Chrome only)
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
       [--host H | --region R]                where it runs (automatic when left out)
   livellm browser-api show NAME              the browsers it drives, and their tabs

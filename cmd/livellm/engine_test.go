@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -59,8 +61,6 @@ func TestCreateEngineBodies(t *testing.T) {
 			"/v1/workloads/browser", map[string]any{"id": "shop", "engine": "camoufox"}},
 		{"a file's own chrome is sent as written", []string{"browser", "-f", chromeFile, "--engine", "chrome"},
 			"/v1/workloads/browser", map[string]any{"id": "shop", "engine": "chrome"}},
-		{"camoufox Browser API from a file", []string{"browser-api", "-f", apiFile, "--engine", "camoufox"},
-			"/v1/workloads/controller", map[string]any{"id": "pool", "autodiscover": true, "engine": "camoufox"}},
 	}
 	for _, c := range cases {
 		f := newFakeAPI(t)
@@ -82,6 +82,10 @@ func TestCreateEngineBodies(t *testing.T) {
 		"file says another one":  {"browser", "-f", chromeFile, "--engine", "camoufox"},
 		"engine on a machine":    {"vm-ubuntu", "-f", plainFile, "--engine", "chrome"},
 		"browser-api bad engine": {"browser-api", "-f", apiFile, "--engine", "safari"},
+		// A Browser API has no engine: one holds browsers of both.
+		"engine on a Browser API":        {"browser-api", "-f", apiFile, "--engine", "camoufox"},
+		"chrome on a Browser API":        {"browser-api", "-f", apiFile, "--engine", "chrome"},
+		"engine on a controller by type": {"controller", "-f", apiFile, "--engine", "camoufox"},
 	}
 	for name, args := range refused {
 		f := newFakeAPI(t)
@@ -94,43 +98,39 @@ func TestCreateEngineBodies(t *testing.T) {
 	}
 }
 
+// browser-api create has no --engine: one Browser API holds browsers of
+// both engines, and the body is the 0.5.0 one.
 func TestBrowserAPICreateEngine(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want map[string]any
-	}{
-		{"every Camoufox browser", []string{"create", "foxes", "--all", "--engine", "camoufox"},
-			map[string]any{"id": "foxes", "autodiscover": true, "engine": "camoufox"}},
-		{"named Camoufox browsers", []string{"create", "foxes", "--engine", "camoufox", "--browsers", "f1,f2"},
-			map[string]any{"id": "foxes", "autodiscover": false, "browsers": []any{"f1", "f2"}, "engine": "camoufox"}},
-		{"chrome sends no engine", []string{"create", "pool", "--all", "--engine", "chrome"},
-			map[string]any{"id": "pool", "autodiscover": true}},
+	if os.Getenv("LIVELLM_FLAG_EXIT") == "1" {
+		_ = cmdBrowserAPI([]string{"create", "foxes", "--all", "--engine", os.Getenv("LIVELLM_FLAG_ENGINE")})
+		os.Exit(0)
 	}
-	for _, c := range cases {
+	// flag.ExitOnError ends the process, so the refusal runs in a child.
+	for _, engine := range []string{"camoufox", "chrome"} {
 		f := newFakeAPI(t)
-		if err := cmdBrowserAPI(c.args); err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-		w := writesOf(f)
-		if len(w) != 1 || w[0].path != "/v1/workloads/controller" {
-			t.Fatalf("%s: sent %v", c.name, w)
-		}
-		if got := bodyOf(t, w[0]); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%s: sent %v, want %v", c.name, got, c.want)
-		}
-	}
-	for name, args := range map[string][]string{
-		"remote in a Camoufox one": {"create", "foxes", "--all", "--engine", "camoufox", "--remote", "office=wss://o"},
-		"unknown engine":           {"create", "foxes", "--all", "--engine", "webkit"},
-	} {
-		f := newFakeAPI(t)
-		if err := cmdBrowserAPI(args); err == nil {
-			t.Errorf("%s: should be refused", name)
+		cmd := exec.Command(os.Args[0], "-test.run=^TestBrowserAPICreateEngine$")
+		cmd.Env = append(os.Environ(), "LIVELLM_FLAG_EXIT=1", "LIVELLM_FLAG_ENGINE="+engine)
+		out, err := cmd.CombinedOutput()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 2 || !strings.Contains(string(out), "flag provided but not defined: -engine") {
+			t.Errorf("--engine %s: exit %v, %q", engine, err, out)
 		}
 		if w := writesOf(f); len(w) != 0 {
-			t.Errorf("%s: sent %v", name, w)
+			t.Errorf("--engine %s: sent %v", engine, w)
 		}
+	}
+	// Without it: a pool of named browsers of either engine, sent as before.
+	f := newFakeAPI(t)
+	if err := cmdBrowserAPI([]string{"create", "mixed", "--browsers", "fox,shop"}); err != nil {
+		t.Fatal(err)
+	}
+	w := writesOf(f)
+	if len(w) != 1 || w[0].path != "/v1/workloads/controller" {
+		t.Fatalf("sent %v", w)
+	}
+	want := map[string]any{"id": "mixed", "autodiscover": false, "browsers": []any{"fox", "shop"}}
+	if got := bodyOf(t, w[0]); !reflect.DeepEqual(got, want) {
+		t.Errorf("sent %v, want %v", got, want)
 	}
 }
 
@@ -184,17 +184,20 @@ func TestConnectCamoufox(t *testing.T) {
 	}
 }
 
+// A mixed pool (mixed) and an every-browser one (pool) over a Camoufox and a
+// Chrome browser. A stray engine on a Browser API (an old write) is ignored.
 const camoufoxWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"fox","type":"browser","browser":{"engine":"camoufox","locale":"ru-RU"}},
 	{"id":"shop","type":"browser","browser":{}},
-	{"id":"foxes","type":"controller","controller":{"engine":"camoufox","autodiscover":true}},
-	{"id":"pool","type":"controller","controller":{"autodiscover":true}}]}}`
+	{"id":"mixed","type":"controller","controller":{"autodiscover":false,"browsers":["fox","shop"]}},
+	{"id":"pool","type":"controller","controller":{"autodiscover":true,"engine":"camoufox"}}]}}`
 
-// The API's status says engine camoufox for Camoufox ones, nothing for Chrome.
+// The API's status says engine camoufox for Camoufox browsers, nothing for
+// Chrome ones and Browser APIs.
 const camoufoxStatus = `{"workloads":[
 	{"id":"fox","type":"browser","engine":"camoufox","phase":"Running","ready":true},
 	{"id":"shop","type":"browser","phase":"Running","ready":true},
-	{"id":"foxes","type":"controller","engine":"camoufox","phase":"Running","ready":true},
+	{"id":"mixed","type":"controller","phase":"Running","ready":true,"browsers":[{"id":"fox","ready":true},{"id":"shop","ready":true}]},
 	{"id":"pool","type":"controller","phase":"Running","ready":true}]}`
 
 func engineFake(t *testing.T) *fakeAPI {
@@ -204,8 +207,8 @@ func engineFake(t *testing.T) *fakeAPI {
 	return f
 }
 
-// ls and status say engine camoufox for Camoufox browsers and Browser APIs,
-// and nothing for Chrome ones.
+// ls and status say engine camoufox for Camoufox browsers, and nothing for
+// Chrome ones or Browser APIs (a Browser API holds either engine).
 func TestListAndStatusShowCamoufox(t *testing.T) {
 	engineFake(t)
 	engines := func(list []any) map[string]any {
@@ -216,7 +219,7 @@ func TestListAndStatusShowCamoufox(t *testing.T) {
 		}
 		return got
 	}
-	want := map[string]any{"fox": "camoufox", "shop": nil, "foxes": "camoufox", "pool": nil}
+	want := map[string]any{"fox": "camoufox", "shop": nil, "mixed": nil, "pool": nil}
 
 	out, _, err := captured(t, func() error { return cmdList(nil) })
 	if err != nil {
@@ -259,15 +262,18 @@ func TestStatusReadsNoSettings(t *testing.T) {
 	}
 }
 
+// A Browser API holding both engines shows no engine of its own; its
+// browsers are listed as they are.
 func TestBrowserAPIShowCamoufox(t *testing.T) {
 	engineFake(t)
-	out, _, err := captured(t, func() error { return browserAPIShow([]string{"foxes"}) })
+	out, _, err := captured(t, func() error { return browserAPIShow([]string{"mixed"}) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := printed(t, out)
-	if got["engine"] != "camoufox" || got["drives"] != "every Camoufox browser in the workspace" {
-		t.Errorf("show foxes: %v", got)
+	if _, has := got["engine"]; has || got["drives"] != "only these" ||
+		!reflect.DeepEqual(got["browsers"], []any{"fox", "shop"}) || got["answering"] == nil {
+		t.Errorf("show mixed: %v", got)
 	}
 	out, _, err = captured(t, func() error { return browserAPIShow([]string{"pool"}) })
 	if err != nil {
@@ -290,23 +296,16 @@ func TestEngineRefusalsSayWhatNext(t *testing.T) {
 	}{
 		{422, `{"error":"A browser's engine can't change after creation — make a new browser (its cookies can be imported into it).","code":"engine_fixed"}`,
 			"livellm browser cookies import NEW", "engine can't change"},
-		// A Browser API holds no cookies: a new one is all it takes.
-		{422, `{"error":"A Browser API's engine can't change after creation — make a new Browser API.","code":"engine_fixed"}`,
-			"livellm browser-api create NAME --engine", "Browser API's engine"},
 		{422, `{"error":"This platform doesn't offer Camoufox browsers.","code":"engine_unavailable"}`,
 			"livellm browser engines", "doesn't offer Camoufox"},
 		{422, `{"error":"Camoufox browsers take no extensions yet.","code":"extensions_unsupported"}`,
 			"\"extensions\"", "take no extensions"},
-		{422, `{"error":"Browser API foxes drives Camoufox browsers; shop runs Chrome","code":"engine_mismatch"}`,
-			"its own engine only", "drives Camoufox"},
-		// A browser whose id says profile is still a pool refusal.
-		{422, `{"error":"Browser API pool drives Camoufox browsers; profile-b runs Chrome","code":"engine_mismatch"}`,
-			"its own engine only", "profile-b runs Chrome"},
-		{422, `{"error":"Browser API profile-pool drives Camoufox browsers; shop runs Chrome","code":"engine_mismatch"}`,
-			"its own engine only", "profile-pool"},
-		// tenant-api's profile copy across engines.
+		// engine_mismatch is tenant-api's profile copy across engines, whatever
+		// its words: the next step is the cookies.
 		{422, `{"error":"shop runs Chrome and fox runs Camoufox: profiles move only between browsers of one engine — import its cookies instead.","code":"engine_mismatch"}`,
 			"storage_state", "profiles move only"},
+		{422, `{"error":"shop and fox run different engines","code":"engine_mismatch"}`,
+			"livellm browser cookies import NEW", "different engines"},
 		{422, `{"error":"This profile is from a Chrome browser; this browser runs Camoufox. Profiles move only between browsers of one engine — import its cookies instead.","code":"profile_engine"}`,
 			"livellm browser cookies import NEW", "from a Chrome browser"},
 		// No code: not taken for an engine refusal by its words, so a

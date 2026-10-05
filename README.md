@@ -122,13 +122,13 @@ to export, import or copy.
 
 Two browser engines: Chrome (the default, driven over CDP) and Camoufox
 (Firefox-based, driven with Playwright). The engine is chosen when a browser
-or a Browser API is made and can't change later; `ls` and `status` show
-`"engine": "camoufox"` for Camoufox ones.
+is made and can't change later; `ls` and `status` show `"engine": "camoufox"`
+for Camoufox ones.
 
 ```sh
 livellm browser engines                                   # what this platform offers
 livellm create browser --id fox --engine camoufox --locale ru-RU --timezone Europe/Moscow
-livellm browser-api create foxes --engine camoufox --all  # every Camoufox browser, one address
+livellm browser-api create mixed --browsers fox,shop      # both engines, one address
 livellm connect fox                                       # playwright.url and playwright.headers
 ```
 
@@ -144,13 +144,21 @@ with sync_playwright() as p:
 
 Work in `contexts[0]` and close your pages, never the context or the browser;
 a `new_context()` needs `no_viewport=True`. A Camoufox browser takes no
-extensions (uBlock Origin is built in). A Browser API drives browsers of one
-engine, and remote browsers go only in a Chrome one. Profiles move only
-between browsers of one engine; cookies move across (`cookies import` says how
-many it couldn't take as `dropped`); there is no cookies export, so save them
-from the old browser with Playwright (`contexts[0].storage_state(path="cookies.json")`)
-and `livellm browser cookies import NEW cookies.json`. Scripts written for a CDP
-address can't drive a Camoufox browser.
+extensions (uBlock Origin is built in).
+
+A Browser API holds browsers of both engines (`--all` is every browser in the
+workspace, either engine; remote browsers are Chrome). Its `POST /start_session`
+takes an optional engine, `-d '{"engine":"camoufox"}'` or `chrome`: the session
+starts on the browser of that engine with the fewest open tabs, or of any
+engine without it. A Browser API holding no browser of that engine refuses it.
+`/browsers/<name>/…` and `X-Browser-Id` pin one browser as before.
+
+Profiles move only between browsers of one engine; cookies move across
+(`cookies import` says how many it couldn't take as `dropped`); there is no
+cookies export, so save them from the old browser with Playwright
+(`contexts[0].storage_state(path="cookies.json")`) and `livellm browser
+cookies import NEW cookies.json`. Scripts written for a CDP address can't
+drive a Camoufox browser.
 
 An app and its databases in one step, linked:
 

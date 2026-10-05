@@ -7,10 +7,11 @@ import (
 )
 
 // A browser's engine: Chrome (the default, driven over CDP) or Camoufox
-// (Firefox-based, driven with Playwright). It is chosen when the browser or
-// the Browser API is made and can't change afterwards. Nothing about a
-// Chrome browser changes: no engine is sent unless it is camoufox, and the
-// engine is shown only when it is camoufox.
+// (Firefox-based, driven with Playwright). It is chosen when the browser is
+// made and can't change afterwards. Nothing about a Chrome browser changes:
+// no engine is sent unless it is camoufox, and the engine is shown only when
+// it is camoufox. A Browser API has no engine: one holds browsers of both,
+// and its start_session takes an engine to pick one.
 
 const camoufox = "camoufox"
 
@@ -44,18 +45,6 @@ func withEngine(body map[string]any, engine string) error {
 		body["engine"] = camoufox
 	}
 	return nil
-}
-
-// specEngine is the engine a workload's settings hold, "" for Chrome.
-func specEngine(w map[string]any) string {
-	for _, block := range []string{"browser", "controller"} {
-		if b, ok := w[block].(map[string]any); ok {
-			if e, _ := b["engine"].(string); e == camoufox {
-				return camoufox
-			}
-		}
-	}
-	return ""
 }
 
 // browserEngines lists the engines this platform offers; it needs no sign-in.
@@ -101,13 +90,9 @@ var engineNexts = map[string]string{
 	"engine_fixed":           "make a new browser with the other --engine; to bring its sign-ins over, " + cookiesOver,
 	"engine_unavailable":     "leave out --engine for a Chrome browser; livellm browser engines lists what this platform offers",
 	"extensions_unsupported": "leave \"extensions\" out of a Camoufox browser's settings",
-	"engine_mismatch":        "a Browser API drives browsers of its own engine only (livellm ls shows engine camoufox), and remote browsers go only in a Chrome one",
+	"engine_mismatch":        cookiesOver,
 	"profile_engine":         cookiesOver,
 }
-
-// engineFixedAPI is the next step when the engine refused is a Browser
-// API's: it holds no cookies, so a new one is all it takes.
-const engineFixedAPI = "make a new Browser API with the other --engine: livellm browser-api create NAME --engine chrome|camoufox --browsers a,b | --all"
 
 // engineNext gives an engine refusal its next step, unless the API named
 // one. Only a refusal carrying one of the engine codes gets one; any other
@@ -120,14 +105,6 @@ func engineNext(err error) error {
 	next, ok := engineNexts[p.Code]
 	if !ok {
 		return err
-	}
-	msg := strings.ToLower(p.Msg)
-	switch {
-	case p.Code == "engine_fixed" && strings.Contains(msg, "browser api"):
-		next = engineFixedAPI
-	case p.Code == "engine_mismatch" && strings.Contains(msg, "profiles move only between browsers of one engine"):
-		// A profile copy across engines, not a Browser API's members.
-		next = engineNexts["profile_engine"]
 	}
 	p.Next = next
 	return err

@@ -87,9 +87,6 @@ func resources() ([]resource, error) {
 				Browser *struct {
 					Engine string `json:"engine"`
 				} `json:"browser"`
-				Controller *struct {
-					Engine string `json:"engine"`
-				} `json:"controller"`
 			} `json:"workloads"`
 		} `json:"spec"`
 	}
@@ -129,8 +126,9 @@ func resources() ([]resource, error) {
 		if w.Pod != nil {
 			r.Databases = w.Pod.Databases
 		}
-		// The engine shows only for Camoufox: a Chrome line stays as it was.
-		if (w.Browser != nil && w.Browser.Engine == camoufox) || (w.Controller != nil && w.Controller.Engine == camoufox) {
+		// The engine shows only for a Camoufox browser: a Chrome line stays
+		// as it was, and a Browser API has none (it holds either engine).
+		if w.Browser != nil && w.Browser.Engine == camoufox {
 			r.Engine = camoufox
 		}
 		if i, ok := byID[w.ID]; ok {
@@ -474,14 +472,14 @@ func cmdCreate(args []string) error {
 	timezone := fs.String("timezone", "", "a browser: its time zone, e.g. Europe/Moscow")
 	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
-	engineArg := fs.String("engine", "", "a browser or a Browser API: chrome (the default) or camoufox; fixed once made")
+	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
 	_ = fs.Parse(rest)
 	engine, err := engineFlag(*engineArg)
 	if err != nil {
 		return err
 	}
-	if engine != "" && kind != "browser" && kind != browserAPIType {
-		return fmt.Errorf("--engine goes with create browser and create browser-api")
+	if engine != "" && kind != "browser" {
+		return fmt.Errorf("--engine goes with create browser")
 	}
 	if *join != "" && kind != "apps" {
 		return fmt.Errorf("--join goes with create apps")
