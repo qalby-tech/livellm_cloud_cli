@@ -16,21 +16,27 @@ platform and attaches them to the GitHub release.
   DB --from` are refused before anything is sent, with the API's words;
   `--reachable-from ''` on a database is left out (it has nothing anyway), and
   so is a `reachableFrom: []` in its body. `reach DB` shows what links it and
-  its inside addresses (only when something does).
+  its inside addresses (only when something does), and says the whole
+  workspace may still reach it while the platform hasn't closed the workspace
+  (another resource has no setting yet).
 - `livellm link ID DB... [--remove]`: reach-only links. The app (with its
   whole Composable App), the machine or the Desktop App reaches the database;
   nothing goes into its environment and nothing restarts. It reads the
   resource first and sends its whole list (`pod`, `vm` or `desktop`
   `databases`), keeping the links it had, variables and all; `--remove` says
   when a removed link's variables leave the app (it restarts), and what still
-  reaches the database (a wait, another service of the Composable App).
+  reaches the database (a wait, another service of the Composable App that
+  links it or waits for it). A Composable App's name links from its first
+  service; `--remove` takes the service's id.
 - `create vm-…|desktop --database DB` (repeatable) links databases reach only,
   next to `databases` in the `-f` body; a machine's or Desktop App's link with
   variables is refused as the API does. `ls` lists machine and Desktop App
   links. `rm --force` names what blocks deleting a database: an app, a machine
-  or a Desktop App that links it.
-- `livellm reach ID` shows the setting, what reaches the resource whatever it
-  says (`alsoFrom`: `same app`, `links it`, `waits for it`, `drives it`, with
+  or a Desktop App that links it. `rm --with-databases` keeps a database that a
+  machine or a Desktop App uses.
+- `livellm reach ID` shows the setting (`null`, "not set yet", for a resource
+  the platform hasn't given one: never `"*"`), what reaches the resource
+  whatever it says (`alsoFrom`: `same app`, `links it`, `waits for it`, `drives it`, with
   `through` for a browser driven by a Browser API, and `via` for the services
   of a Composable App one of whose services links it) and its inside addresses
   (`inStack` on every port of a Composable App's service).
@@ -45,7 +51,8 @@ platform and attaches them to the GitHub release.
   nothing (there is no `none` keyword: it may be a resource's name). Left out,
   nothing is sent: the same request as before, and the resource starts closed.
   With `create apps --join APP`, the new services take the app's setting: a
-  different `--reachable-from` is refused (change the whole app with `reach`).
+  different `--reachable-from` is refused (change the whole app with `reach`),
+  and so is any when the app has no setting yet.
   A settings file that names another `reachableFrom` is refused, not
   overridden, and so are words left after the list (`--reachable-from web,
   box`). `--template` takes none.

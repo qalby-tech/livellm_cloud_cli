@@ -224,7 +224,9 @@ livellm create vm-ubuntu -f box.json --database shop-db --database shop-cache
 ```
 
 `link` reads the resource first and sends its whole list, keeping the links it
-had (variables and all). A database can't be deleted while an app, a machine or
+had (variables and all). Given a Composable App's name, it links from the app's
+first service (the whole app reaches the database either way); `--remove` takes
+the service's id. A database can't be deleted while an app, a machine or
 a Desktop App links it (`rm --force` deletes it anyway).
 
 Backups work the same way for machines and databases:
@@ -300,8 +302,9 @@ livellm create apps -f shop.json --reachable-from edge   # one setting for the w
 ```
 
 Whatever the setting, a resource is reached by its own parts, the other
-services of its Composable App, and, a browser, the Browser API that drives it.
-A database has no setting (`--reachable-from` and `reach DB --from` are
+services of its Composable App, the apps that wait for it (`dependsOn`, each
+with its whole Composable App), and, a browser, the Browser API that drives it:
+`reach X --none` doesn't stop an app that waits for X. A database has no setting (`--reachable-from` and `reach DB --from` are
 refused): the apps that link it (`databases`) or wait for it (`dependsOn`),
 and the machines and Desktop Apps that link it, reach it, and nothing else in
 the workspace. `reach` lists them under `alsoFrom` (`same app`, `links it`,
@@ -310,9 +313,12 @@ through that Browser API, whose inside address takes no key). An app that
 links it or waits for it brings its whole Composable App: the services that
 don't link it themselves name the one that does in `via`. Public addresses
 keep their own settings. `livellm connect ID` prints the API's own `inside`
-block. A resource whose setting the platform hasn't written yet shows `"*"`
-with a note: it is reached from the whole workspace until the platform closes
-it. With `create apps --join APP` the new services take the app's setting;
+block. A resource whose setting the platform hasn't written yet shows
+`reachableFrom: null` ("not set yet", and `through: null` on such a Browser
+API): until the platform closes the workspace the whole workspace may still
+reach it, but that is no setting that lets the whole workspace in. While any
+resource has no setting, `reach` on a database says the whole workspace may
+still reach it too. With `create apps --join APP` the new services take the app's setting;
 `--reachable-from ''` means nothing.
 
 Before you let a resource reach another (`--from`, `--reachable-from`, a
