@@ -474,12 +474,14 @@ func cmdCreate(args []string) error {
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
 	_ = fs.Parse(rest)
+	// The kind first: an --engine on anything but a browser is refused as
+	// such, whatever its value.
+	if strings.TrimSpace(*engineArg) != "" && kind != "browser" {
+		return fmt.Errorf("--engine goes with create browser")
+	}
 	engine, err := engineFlag(*engineArg)
 	if err != nil {
 		return err
-	}
-	if engine != "" && kind != "browser" {
-		return fmt.Errorf("--engine goes with create browser")
 	}
 	if *join != "" && kind != "apps" {
 		return fmt.Errorf("--join goes with create apps")

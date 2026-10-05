@@ -87,10 +87,19 @@ func TestCreateEngineBodies(t *testing.T) {
 		"chrome on a Browser API":        {"browser-api", "-f", apiFile, "--engine", "chrome"},
 		"engine on a controller by type": {"controller", "-f", apiFile, "--engine", "camoufox"},
 	}
+	// An --engine on anything but a browser is refused for the kind, even
+	// with a value no browser takes either.
+	kindRefusal := map[string]bool{
+		"engine on an app": true, "engine on a machine": true, "browser-api bad engine": true,
+		"engine on a Browser API": true, "chrome on a Browser API": true, "engine on a controller by type": true,
+	}
 	for name, args := range refused {
 		f := newFakeAPI(t)
-		if err := cmdCreate(args); err == nil {
+		err := cmdCreate(args)
+		if err == nil {
 			t.Errorf("%s: should be refused", name)
+		} else if kindRefusal[name] != (err.Error() == "--engine goes with create browser") {
+			t.Errorf("%s: refused with %q", name, err)
 		}
 		if w := writesOf(f); len(w) != 0 {
 			t.Errorf("%s: sent %v", name, w)
