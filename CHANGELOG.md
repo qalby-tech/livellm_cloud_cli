@@ -3,6 +3,28 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.6.0
+
+- Camoufox browsers (Firefox-based, driven with Playwright) next to Chrome:
+  `livellm create browser --id NAME --engine chrome|camoufox` and `livellm
+  browser-api create NAME --engine chrome|camoufox --browsers a,b | --all`
+  (`--all` is every browser of that engine; remote browsers go only in a
+  Chrome one). The engine is fixed once made. Without `--engine`, or with
+  `--engine chrome`, nothing changes: the same request as before.
+- `livellm browser engines` lists the engines this platform offers (no
+  sign-in needed).
+- `connect` on a Camoufox browser prints the API's answer as it comes, with
+  its `playwright` block (`url`, `headers`, `version`), and one line on stderr:
+  `Playwright 1.62: firefox.connect(playwright.url, headers=playwright.headers)`.
+- `ls`, `status` and `browser-api show` say `"engine": "camoufox"` for
+  Camoufox browsers and Browser APIs; Chrome ones print as before.
+- The refusals `engine_fixed`, `engine_unavailable`, `extensions_unsupported`,
+  `engine_mismatch` and `profile_engine` print the API's message and what to
+  do next.
+- Clients before 0.6 can't drive a Camoufox browser: livellm before 0.6 has
+  no `--engine` and no Playwright hint, and scripts written for a CDP address
+  (`cdp.url`) find none in a Camoufox answer.
+
 ## 0.5.0
 
 - `livellm browser locale ID --locale ru-RU --timezone Europe/Moscow

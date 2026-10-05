@@ -25,7 +25,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm install ID                         a new machine's way to its first boot
   livellm database ID                        a database's instances, live
   livellm logs ID [--lines N]                recent logs, and restarts
-  livellm connect ID [--tool TOOL]           how to reach it
+  livellm connect ID [--tool TOOL]           how to reach it (a Camoufox browser: its Playwright address)
           [--screen-width PX] [--format png|jpeg]
   livellm exec ID "COMMAND"                  run a command on a machine (PowerShell on Windows)
           [--session S] [--timeout N]   (waits until it ends, up to --timeout)
@@ -95,8 +95,12 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              (permissions are given by a person, in the console)
 
   livellm create browser --id NAME [-f FILE] [--locale ru-RU] [--timezone Europe/Moscow]
-          [--profile FILE [--profile-password-env VAR]]
-                                             a browser; with --profile it starts with that exported profile
+          [--profile FILE [--profile-password-env VAR]] [--engine chrome|camoufox]
+                                             a browser; with --profile it starts with that exported profile;
+                                             the engine is Chrome unless --engine camoufox, and can't change later
+  livellm browser engines                    the browser engines this platform offers
+                                             (Camoufox is Firefox-based and driven with Playwright, not CDP:
+                                             clients before livellm 0.6 and CDP-only scripts can't drive it)
   livellm browser locales                    the languages and time zones a browser takes
   livellm browser locale ID                  its language, time zone and location ('' clears one;
           [--locale ru-RU] [--timezone Europe/Moscow] [--languages ru-RU,ru,en]
@@ -128,6 +132,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
 
   livellm browser-api create NAME --browsers a,b | --all [--remote id=wss://…]
                                              one address over several browsers
+      [--engine chrome|camoufox]             the engine of the browsers it drives (Chrome when left out;
+                                             --all is every browser of that engine; remote ones: Chrome only)
       [--remote-auth id=ENV_VAR]             a remote browser's login, from a variable
       [--host H | --region R]                where it runs (automatic when left out)
   livellm browser-api show NAME              the browsers it drives, and their tabs
@@ -244,6 +250,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
+		err = engineNext(err)
 		fmt.Fprintln(os.Stderr, "livellm: "+err.Error())
 		os.Exit(exitCode(err))
 	}

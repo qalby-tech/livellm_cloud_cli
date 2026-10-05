@@ -55,6 +55,7 @@ func cmdWhoami([]string) error {
 type resource struct {
 	ID        string   `json:"id"`
 	Type      string   `json:"type"`
+	Engine    string   `json:"engine,omitempty"`
 	State     string   `json:"state"`
 	Ready     bool     `json:"ready"`
 	CreatedBy string   `json:"createdBy,omitempty"`
@@ -83,6 +84,12 @@ func resources() ([]resource, error) {
 				Pod *struct {
 					Databases []map[string]any `json:"databases"`
 				} `json:"pod"`
+				Browser *struct {
+					Engine string `json:"engine"`
+				} `json:"browser"`
+				Controller *struct {
+					Engine string `json:"engine"`
+				} `json:"controller"`
 			} `json:"workloads"`
 		} `json:"spec"`
 	}
@@ -121,6 +128,10 @@ func resources() ([]resource, error) {
 		}
 		if w.Pod != nil {
 			r.Databases = w.Pod.Databases
+		}
+		// The engine shows only for Camoufox: a Chrome line stays as it was.
+		if (w.Browser != nil && w.Browser.Engine == camoufox) || (w.Controller != nil && w.Controller.Engine == camoufox) {
+			r.Engine = camoufox
 		}
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]
@@ -174,15 +185,23 @@ func cmdStatus(args []string) error {
 	if err := call("GET", "/v1/status", nil, &live); err != nil {
 		return err
 	}
+	var entries []map[string]any
+	if list, ok := live["workloads"].([]any); ok {
+		for _, raw := range list {
+			if w, ok := raw.(map[string]any); ok {
+				entries = append(entries, w)
+			}
+		}
+	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		markEngines(entries)
 		return print(live)
 	}
 	id := args[0]
-	if list, ok := live["workloads"].([]any); ok {
-		for _, raw := range list {
-			if w, ok := raw.(map[string]any); ok && w["id"] == id {
-				return print(w)
-			}
+	for _, w := range entries {
+		if w["id"] == id {
+			markEngines([]map[string]any{w})
+			return print(w)
 		}
 	}
 	return fmt.Errorf("there is nothing called %q here — try livellm ls", id)
@@ -249,7 +268,11 @@ func cmdConnect(args []string) error {
 		}
 	}
 	fillRawAddresses(id, out)
-	return print(out)
+	if err := print(out); err != nil {
+		return err
+	}
+	printConnectHint(out)
+	return nil
 }
 
 // fillRawAddresses gives an app's raw TCP/UDP ports their host:port, which
@@ -459,7 +482,15 @@ func cmdCreate(args []string) error {
 	timezone := fs.String("timezone", "", "a browser: its time zone, e.g. Europe/Moscow")
 	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
+	engineArg := fs.String("engine", "", "a browser or a Browser API: chrome (the default) or camoufox; fixed once made")
 	_ = fs.Parse(rest)
+	engine, err := engineFlag(*engineArg)
+	if err != nil {
+		return err
+	}
+	if engine != "" && kind != "browser" && kind != browserAPIType {
+		return fmt.Errorf("--engine goes with create browser and create browser-api")
+	}
 	if *join != "" && kind != "apps" {
 		return fmt.Errorf("--join goes with create apps")
 	}
@@ -467,7 +498,11 @@ func cmdCreate(args []string) error {
 		return fmt.Errorf("--id, --locale, --timezone and --profile go with create browser")
 	}
 	if kind == "browser" && *file == "" && *newID != "" {
-		return createBrowser(map[string]any{"id": *newID}, *locale, *timezone, *profile, *profilePw)
+		body := map[string]any{"id": *newID}
+		if err := withEngine(body, engine); err != nil {
+			return err
+		}
+		return createBrowser(body, *locale, *timezone, *profile, *profilePw)
 	}
 	if *file == "" {
 		if kind == "browser" {
@@ -526,6 +561,9 @@ func cmdCreate(args []string) error {
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return fmt.Errorf("%s isn't valid JSON: %w", *file, err)
+	}
+	if err := withEngine(body, engine); err != nil {
+		return err
 	}
 	if kind == "browser" {
 		if *newID != "" {

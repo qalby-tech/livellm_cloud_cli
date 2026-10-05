@@ -120,6 +120,36 @@ protect it with a password (`age -d` opens it too). Only profiles exported from 
 another Chrome, import its cookies. An API key needs the profiles permission
 to export, import or copy.
 
+Two browser engines: Chrome (the default, driven over CDP) and Camoufox
+(Firefox-based, driven with Playwright). The engine is chosen when a browser
+or a Browser API is made and can't change later; `ls` and `status` show
+`"engine": "camoufox"` for Camoufox ones.
+
+```sh
+livellm browser engines                                   # what this platform offers
+livellm create browser --id fox --engine camoufox --locale ru-RU --timezone Europe/Moscow
+livellm browser-api create foxes --engine camoufox --all  # every Camoufox browser, one address
+livellm connect fox                                       # playwright.url and playwright.headers
+```
+
+Drive it with the Playwright version the answer names (`playwright.version`,
+1.62 today; other versions are refused):
+
+```python
+from playwright.sync_api import sync_playwright  # pip install "playwright==1.62.*"
+with sync_playwright() as p:
+    b = p.firefox.connect(url, headers=headers)   # from livellm connect fox
+    page = b.contexts[0].new_page()               # contexts[0] holds its cookies and sign-ins
+```
+
+Work in `contexts[0]` and close your pages, never the context or the browser;
+a `new_context()` needs `no_viewport=True`. A Camoufox browser takes no
+extensions (uBlock Origin is built in). A Browser API drives browsers of one
+engine, and remote browsers go only in a Chrome one. Profiles move only
+between browsers of one engine; cookies move across (`cookies import` says how
+many it couldn't take as `dropped`). Clients before livellm 0.6, and scripts
+written for a CDP address, can't drive a Camoufox browser.
+
 An app and its databases in one step, linked:
 
 ```sh

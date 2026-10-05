@@ -24,7 +24,7 @@ import (
 // profile's password) are read from environment variables, stdin or a file,
 // never from the command line, so they stay out of ps and shell history.
 
-const browserUsage = "browser what? locales, locale, proxy, profile or cookies"
+const browserUsage = "browser what? engines, locales, locale, proxy, profile or cookies"
 
 func cmdBrowser(args []string) error {
 	if len(args) == 0 {
@@ -32,6 +32,8 @@ func cmdBrowser(args []string) error {
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
+	case "engines":
+		return browserEngines(rest)
 	case "locales", "languages":
 		return browserLocales(rest)
 	case "locale", "language", "timezone":
@@ -43,7 +45,7 @@ func cmdBrowser(args []string) error {
 	case "cookies":
 		return cmdBrowserCookies(rest)
 	}
-	return fmt.Errorf("browser has no %q: locales, locale, proxy, profile or cookies", sub)
+	return fmt.Errorf("browser has no %q: engines, locales, locale, proxy, profile or cookies", sub)
 }
 
 // hint adds what to do next to a refusal the platform words generally.
