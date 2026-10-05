@@ -289,10 +289,10 @@ every resource starts, those made before included), the resources it names, or
 the whole workspace (`"*"`, also resources made later).
 
 ```sh
-livellm reach shipuchka-browsers                # its setting, what reaches it anyway, its inside addresses
-livellm reach shipuchka-browsers --from shipuchka   # let shipuchka (its whole Composable App) reach it
+livellm reach scraper-browsers                  # its setting, what reaches it anyway, its inside addresses
+livellm reach scraper-browsers --from scraper   # let scraper (its whole Composable App) reach it
 livellm reach shared-api --from '*'             # the whole workspace
-livellm reach shipuchka-browsers --none         # nothing else in the workspace
+livellm reach scraper-browsers --none           # nothing else in the workspace
 livellm reach nextcloud-db                      # a database: what links it, and its inside addresses
 livellm link nextcloud nextcloud-db             # let nextcloud reach it (reach only)
 livellm create pod -f api.json --reachable-from web,worker
