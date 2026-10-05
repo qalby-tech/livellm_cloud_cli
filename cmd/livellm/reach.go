@@ -311,7 +311,7 @@ func strs(v any) []string {
 }
 
 // storedReach is a resource's setting. One the API has never written is
-// reached from the whole workspace, as before.
+// reached from the whole workspace until the platform closes it.
 func storedReach(w map[string]any) ([]string, bool) {
 	v, ok := w["reachableFrom"]
 	if !ok || v == nil {

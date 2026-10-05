@@ -7,8 +7,28 @@ platform and attaches them to the GitHub release.
 
 - Inside the workspace, resources reach each other only when allowed: each
   one has `reachableFrom` (nothing, the ids it names, or `"*"` for the whole
-  workspace). New resources start with nothing; resources made before keep
-  being reached from the whole workspace.
+  workspace). Every resource starts with nothing, those made before included.
+  A Composable App is one resource: its services reach each other.
+- A database has no `reachableFrom`: it is reached only by what links it (an
+  app's `databases` or `dependsOn`, with its whole Composable App; a machine's
+  or a Desktop App's `databases`). `--reachable-from` on `create storage`, a
+  `reachableFrom` in its `-f` body or in `create apps`' databases, and `reach
+  DB --from` are refused before anything is sent, with the API's words;
+  `--reachable-from ''` on a database is left out (it has nothing anyway), and
+  so is a `reachableFrom: []` in its body. `reach DB` shows what links it and
+  its inside addresses (only when something does).
+- `livellm link ID DB... [--remove]`: reach-only links. The app (with its
+  whole Composable App), the machine or the Desktop App reaches the database;
+  nothing goes into its environment and nothing restarts. It reads the
+  resource first and sends its whole list (`pod`, `vm` or `desktop`
+  `databases`), keeping the links it had, variables and all; `--remove` says
+  when a removed link's variables leave the app (it restarts), and what still
+  reaches the database (a wait, another service of the Composable App).
+- `create vm-…|desktop --database DB` (repeatable) links databases reach only,
+  next to `databases` in the `-f` body; a machine's or Desktop App's link with
+  variables is refused as the API does. `ls` lists machine and Desktop App
+  links. `rm --force` names what blocks deleting a database: an app, a machine
+  or a Desktop App that links it.
 - `livellm reach ID` shows the setting, what reaches the resource whatever it
   says (`alsoFrom`: `same app`, `links it`, `waits for it`, `drives it`, with
   `through` for a browser driven by a Browser API, and `via` for the services
@@ -19,8 +39,8 @@ platform and attaches them to the GitHub release.
   `reachableFrom`; a Composable App takes it on every service). Names that
   aren't there and words left after the list are refused before anything is
   sent.
-- `--reachable-from a,b|'*'|''` on `create` (every type, `create browser
-  --id` and `-f` bodies), on each app of `create apps` (its databases are
+- `--reachable-from a,b|'*'|''` on `create` (every type but a database,
+  `create browser --id` and `-f` bodies), on each app of `create apps` (its databases are
   reached by the apps linking them) and on `browser-api create`; `''` is
   nothing (there is no `none` keyword: it may be a resource's name). Left out,
   nothing is sent: the same request as before, and the resource starts closed.
@@ -31,7 +51,9 @@ platform and attaches them to the GitHub release.
   box`). `--template` takes none.
 - A refusal with `code: network_permission` (403, exit 2) says to ask the user
   first, and where a person turns on Network: the Keys page for a key, the
-  Agents page for an agent. A key or agent needs no permission to let one
+  Agents page for an agent. It covers a database link, `dependsOn` and a
+  service added to a Composable App as well as `reachableFrom`; `reach` on a
+  Composable App's service says a service added to it lets it in. A key or agent needs no permission to let one
   resource it made reach another it made, nor to narrow; letting the whole
   workspace in always needs Network.
 - `connect` prints the API's `inside` block when it sends one, and a line on

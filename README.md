@@ -205,10 +205,27 @@ A link puts a database's connection details into the app's environment:
 `host`, `port`, `database`, `username`, `password` or `url` (a Redis database
 has no `database` or `username`). The password and the URL are read from the
 database's own login, never written where anyone can read them, and the app
-starts once its databases are up. Links work on an existing app too:
-`set shop-web -f` with `{"pod": {"databases": [...]}}` (the list you send is
-the whole list). A create from a template names the secrets it still needs,
-and the `--secret` flags that give them.
+starts once its databases are up. A link may name no variables (`{"id":
+"shop-db"}`): then it only lets the app reach the database, adds nothing to its
+environment and doesn't restart it (start order without variables is
+`dependsOn`). Links work on an existing app too: `set shop-web -f` with
+`{"pod": {"databases": [...]}}` (the list you send is the whole list), or
+`livellm link` for a reach-only one. A create from a template names the
+secrets it still needs, and the `--secret` flags that give them.
+
+Machines and Desktop Apps link databases too, reach only (nothing goes into
+the machine, nothing restarts):
+
+```sh
+livellm link nextcloud nextcloud-db nextcloud-redis   # reach only; the whole Composable App reaches them
+livellm link build-box shop-db                        # a machine
+livellm link build-box shop-db --remove               # take the link out
+livellm create vm-ubuntu -f box.json --database shop-db --database shop-cache
+```
+
+`link` reads the resource first and sends its whole list, keeping the links it
+had (variables and all). A database can't be deleted while an app, a machine or
+a Desktop App links it (`rm --force` deletes it anyway).
 
 Backups work the same way for machines and databases:
 
@@ -265,39 +282,44 @@ person gave it the billing permission on the console's Keys page.
 
 ## Inside the workspace
 
-Resources in a workspace can't reach each other unless the user allows it (a
-Composable App counts as one resource). Each one says who may connect to it:
-nothing (where every new resource starts), the resources it names, or the
-whole workspace (`"*"`, also resources made later).
+Resources in a workspace can't reach each other unless the user allows it. A
+Composable App counts as one resource, and a database is reached only by what
+links it. Every other resource says who may connect to it: nothing (where
+every resource starts, those made before included), the resources it names, or
+the whole workspace (`"*"`, also resources made later).
 
 ```sh
-livellm reach nextcloud-db                      # its setting, what reaches it anyway, its inside addresses
-livellm reach nextcloud-db --from nextcloud     # let nextcloud (its whole Composable App) reach it
-livellm reach shared-cache --from '*'           # the whole workspace
-livellm reach nextcloud-db --none               # nothing else in the workspace
+livellm reach shipuchka-browsers                # its setting, what reaches it anyway, its inside addresses
+livellm reach shipuchka-browsers --from shipuchka   # let shipuchka (its whole Composable App) reach it
+livellm reach shared-api --from '*'             # the whole workspace
+livellm reach shipuchka-browsers --none         # nothing else in the workspace
+livellm reach nextcloud-db                      # a database: what links it, and its inside addresses
+livellm link nextcloud nextcloud-db             # let nextcloud reach it (reach only)
 livellm create pod -f api.json --reachable-from web,worker
 livellm create apps -f shop.json --reachable-from edge   # one setting for the whole app
 ```
 
 Whatever the setting, a resource is reached by its own parts, the other
-services of its Composable App, the apps that link it (`databases`) or wait for
-it (`dependsOn`), and, a browser, the Browser API that drives it; `reach`
-lists them under `alsoFrom` (`same app`, `links it`, `waits for it`, `drives
-it`, with `through`: what may reach the browser through that Browser API, whose
-inside address takes no key). An app that links it or waits for it brings its
-whole Composable App: the services that don't link it themselves name the one
-that does in `via`. Public addresses keep their own settings.
-`livellm connect ID` prints the API's own `inside` block. A resource made
-before this came in is reached from the whole workspace, as before: other
-edits keep that, and only a change to its own setting (`reach`, or
-`reachableFrom` in a write) narrows it. With `create apps --join APP` the new
-services take the app's setting; `--reachable-from ''` means nothing.
+services of its Composable App, and, a browser, the Browser API that drives it.
+A database has no setting (`--reachable-from` and `reach DB --from` are
+refused): the apps that link it (`databases`) or wait for it (`dependsOn`),
+and the machines and Desktop Apps that link it, reach it, and nothing else in
+the workspace. `reach` lists them under `alsoFrom` (`same app`, `links it`,
+`waits for it`, `drives it`, with `through`: what may reach the browser
+through that Browser API, whose inside address takes no key). An app that
+links it or waits for it brings its whole Composable App: the services that
+don't link it themselves name the one that does in `via`. Public addresses
+keep their own settings. `livellm connect ID` prints the API's own `inside`
+block. A resource whose setting the platform hasn't written yet shows `"*"`
+with a note: it is reached from the whole workspace until the platform closes
+it. With `create apps --join APP` the new services take the app's setting;
+`--reachable-from ''` means nothing.
 
 Before you let a resource reach another (`--from`, `--reachable-from`, a
-database link, `dependsOn`, or a browser put in a Browser API), ask the user
-and wait for their agreement, unless you created both or the one reached
-already lets the whole workspace in. Letting the whole workspace in always
-needs their agreement. An API key or an agent also needs the Network
+database link, `dependsOn`, a service added to a Composable App, or a browser
+put in a Browser API), ask the user and wait for their agreement, unless you
+created both or the one reached already lets the whole workspace in. Letting
+the whole workspace in always needs their agreement. An API key or an agent also needs the Network
 permission for this, which only a person turns on (on the console's Keys page
 for a key, the Agents page for an agent); without it the answer is a 403 with
 `code: network_permission`, and `livellm` says what to do next. Network isn't
