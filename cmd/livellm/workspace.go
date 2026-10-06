@@ -255,13 +255,21 @@ func cmdMonitoring(args []string) error {
 // --- API keys ------------------------------------------------------------------
 
 // permissionList reads --permissions: names separated by commas; "none" is
-// an empty list.
+// an empty list. The old names proxies and profiles go along as typed (the
+// API takes them and keeps nothing), with a word that they gate nothing now.
 func permissionList(s string) []string {
 	out := []string{}
+	var old []string
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" && p != "none" {
 			out = append(out, p)
+			if p == "proxies" || p == "profiles" {
+				old = append(old, p)
+			}
 		}
+	}
+	if len(old) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: no longer a permission; changing a browser's proxies or moving its profile needs none (ask the user first)\n", strings.Join(old, ", "))
 	}
 	return out
 }
@@ -284,7 +292,7 @@ func cmdAPIKeys(args []string) error {
 			return err
 		}
 		fs := flag.NewFlagSet("api-keys create", flag.ExitOnError)
-		perms := fs.String("permissions", "", "what it may do beyond its workspace: billing, proxies, profiles (a person gives these, in the console)")
+		perms := fs.String("permissions", "", "what it may do beyond its workspace: billing (a person gives it, in the console)")
 		_ = fs.Parse(rest)
 		body := map[string]any{"name": name}
 		if *perms != "" {
@@ -302,10 +310,10 @@ func cmdAPIKeys(args []string) error {
 			return err
 		}
 		fs := flag.NewFlagSet("api-keys set", flag.ExitOnError)
-		perms := fs.String("permissions", "", "the key's permissions, all of them: billing, proxies, profiles, or none")
+		perms := fs.String("permissions", "", "the key's permissions, all of them: billing, or none")
 		_ = fs.Parse(rest)
 		if *perms == "" {
-			return fmt.Errorf("pass --permissions billing,proxies,profiles (those it may have), or --permissions none to take them all away")
+			return fmt.Errorf("pass --permissions billing (those it may have), or --permissions none to take them all away")
 		}
 		var out map[string]any
 		if err := call("PATCH", "/v1/keys/"+url.PathEscape(id), map[string]any{"permissions": permissionList(*perms)}, &out); err != nil {

@@ -3,6 +3,14 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.6.1
+
+- `api-keys create|set --permissions` names `billing` only. The proxies and
+  profiles permissions are gone: changing a browser's proxies or moving its
+  profile needs none (ask the user first). The old names are still sent as
+  typed, with a word on stderr; the API takes them and keeps nothing, so
+  livellm 0.5 and 0.6.0 keep working.
+
 ## 0.6.0
 
 - `livellm connect BROWSER` with no `--tool` gives the browser's automation

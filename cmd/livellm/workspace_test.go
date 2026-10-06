@@ -124,6 +124,9 @@ func TestWorkspaceRequests(t *testing.T) {
 			got{"PATCH", "/v1/keys/key_1", obj(`{"permissions":["billing"]}`)}},
 		{"api-keys set none", func() error { return cmdAPIKeys([]string{"set", "key_1", "--permissions", "none"}) },
 			got{"PATCH", "/v1/keys/key_1", obj(`{"permissions":[]}`)}},
+		{"api-keys set with the old names: sent as typed", func() error {
+			return cmdAPIKeys([]string{"set", "key_1", "--permissions", "billing,proxies,profiles"})
+		}, got{"PATCH", "/v1/keys/key_1", obj(`{"permissions":["billing","proxies","profiles"]}`)}},
 		{"api-keys rm", func() error { return cmdAPIKeys([]string{"rm", "key_1", "-y"}) },
 			got{"DELETE", "/v1/keys/key_1", nil}},
 		{"keys", func() error { return cmdKeys(nil) }, got{"GET", "/v1/ssh-keys", nil}},
@@ -584,5 +587,23 @@ func TestTemplateCreatePlacement(t *testing.T) {
 		if err := cmdCreate(args); err == nil || sent != nil {
 			t.Errorf("%q: sent %v, err %v; want it refused before any call", args, sent, err)
 		}
+	}
+}
+
+// The old names proxies and profiles gate nothing now: they go along as typed
+// (released clients send them too, and the API keeps nothing), with a word on
+// stderr; billing alone says nothing.
+func TestPermissionListOldNames(t *testing.T) {
+	var got []string
+	_, errOut, _ := captured(t, func() error { got = permissionList("billing, proxies,profiles"); return nil })
+	if !reflect.DeepEqual(got, []string{"billing", "proxies", "profiles"}) {
+		t.Errorf("sent %v", got)
+	}
+	if !strings.Contains(errOut, "proxies, profiles: no longer a permission") || !strings.Contains(errOut, "ask the user first") {
+		t.Errorf("stderr %q", errOut)
+	}
+	_, errOut, _ = captured(t, func() error { got = permissionList("billing"); return nil })
+	if !reflect.DeepEqual(got, []string{"billing"}) || errOut != "" {
+		t.Errorf("billing: sent %v, stderr %q", got, errOut)
 	}
 }

@@ -90,7 +90,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm agents [ls] | agents rm ID         agents signed in; sign one out
   livellm api-keys [ls]                      the workspace's API keys
   livellm api-keys create NAME               a new key; its secret is shown once
-  livellm api-keys set ID --permissions billing,proxies,profiles|none
+  livellm api-keys set ID --permissions billing|none
   livellm api-keys rm ID                     revoke one
                                              (permissions are given by a person, in the console)
 
