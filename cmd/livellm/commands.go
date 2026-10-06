@@ -224,6 +224,13 @@ func cmdConnect(args []string) error {
 	format := fs.String("format", "", "computer: png or jpeg")
 	_ = fs.Parse(rest)
 	body := map[string]any{}
+	if *tool == "" {
+		// A browser offers two tools; its automation address is the one a
+		// program wants, so it is the default (--tool view for the live view).
+		if t, err := workloadType(id); err == nil && t == "browser" {
+			*tool = "cdp"
+		}
+	}
 	if *tool != "" {
 		body["tool"] = *tool
 	}

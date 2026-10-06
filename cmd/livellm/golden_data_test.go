@@ -71,7 +71,7 @@ POST /v1/workloads/controller {"autodiscover":false,"browsers":["shop"],"externa
 }
 == stderr
 == writes
-POST /v1/workloads/shop/connect {}
+POST /v1/workloads/shop/connect {"tool":"cdp"}
 `,
 	"create-browser": `== stdout
 {

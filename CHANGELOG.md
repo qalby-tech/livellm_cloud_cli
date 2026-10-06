@@ -5,6 +5,9 @@ platform and attaches them to the GitHub release.
 
 ## 0.6.0
 
+- `livellm connect BROWSER` with no `--tool` gives the browser's automation
+  address (as `--tool cdp`); before, the API refused it. `--tool view` gives the
+  live view.
 - Camoufox browsers (Firefox-based, driven with Playwright) next to Chrome:
   `livellm create browser --id NAME --engine chrome|camoufox`. The engine is
   fixed once made. Without `--engine`, or with `--engine chrome`, nothing
