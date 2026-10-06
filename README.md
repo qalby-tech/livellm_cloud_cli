@@ -98,7 +98,8 @@ it; a program connected to the browser (over CDP) can go around it, and an
 extension allowed to manage proxy or privacy settings can change it.
 Before you change a browser's proxies (set, clear or rotate), ask the user
 and wait for their agreement: it changes where the browser's traffic goes and
-the address sites see.
+the address sites see. `proxy remove`, and a `create` or `set -f FILE` that
+carries proxy settings, count too.
 
 A browser's profile (its sign-ins, cookies and history): snapshots to switch
 back to, and a file to move it with. Taking a snapshot, or exporting the
@@ -119,8 +120,9 @@ An exported file holds sign-ins: keep it private (the command saves it
 readable by you alone, and without `-o` never over a file already there), or
 protect it with a password (`age -d` opens it too). Only profiles exported from LiveLLM browsers can be imported; from
 another Chrome, import its cookies. A profile holds the user's sign-ins:
-before you export, import or copy one, or add cookies, ask the user and wait
-for their agreement, and never upload an exported file.
+before you export, import or copy one (`create browser --profile` imports
+one too), or add cookies, ask the user and wait for their agreement, and never
+upload an exported file.
 
 Two browser engines: Chrome (the default, driven over CDP) and Camoufox
 (Firefox-based, driven with Playwright). The engine is chosen when a browser

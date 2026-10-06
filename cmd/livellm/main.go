@@ -94,6 +94,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm api-keys rm ID                     revoke one
                                              (permissions are given by a person, in the console)
 
+  Ask the user and wait for their agreement before you change a browser's proxies
+  (set, clear, remove, rotate, or a create/set file carrying proxy settings), or
+  export, import or copy its profile (create --profile too) or add cookies:
+  a profile holds sign-ins.
   livellm create browser --id NAME [-f FILE] [--locale ru-RU] [--timezone Europe/Moscow]
           [--profile FILE [--profile-password-env VAR]] [--engine chrome|camoufox]
                                              a browser; with --profile it starts with that exported profile;

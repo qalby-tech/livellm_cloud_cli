@@ -10,6 +10,10 @@ platform and attaches them to the GitHub release.
   profile needs none (ask the user first). The old names are still sent as
   typed, with a word on stderr; the API takes them and keeps nothing, so
   livellm 0.5 and 0.6.0 keep working.
+- `livellm help` and the README say to ask the user and wait for their
+  agreement before changing a browser's proxies (`proxy remove` and a create or
+  `set -f FILE` carrying proxy settings count too) or exporting, importing or
+  copying its profile (`create browser --profile` too) or adding cookies.
 
 ## 0.6.0
 
