@@ -23,23 +23,33 @@ func backupsPath(id string) string {
 // workloadType is the resource's type, read from the workspace, so a command
 // can say what it can't do before sending anything.
 func workloadType(id string) (string, error) {
+	t, _, err := workloadKind(id)
+	return t, err
+}
+
+// workloadKind is the resource's type and, for a database, its engine
+// (postgres, redis or s3).
+func workloadKind(id string) (string, string, error) {
 	var ws struct {
 		Spec struct {
 			Workloads []struct {
-				ID   string `json:"id"`
-				Type string `json:"type"`
+				ID      string `json:"id"`
+				Type    string `json:"type"`
+				Storage struct {
+					Engine string `json:"engine"`
+				} `json:"storage"`
 			} `json:"workloads"`
 		} `json:"spec"`
 	}
 	if err := call("GET", "/v1/workspace", nil, &ws); err != nil {
-		return "", err
+		return "", "", err
 	}
 	for _, w := range ws.Spec.Workloads {
 		if w.ID == id {
-			return w.Type, nil
+			return w.Type, w.Storage.Engine, nil
 		}
 	}
-	return "", fmt.Errorf("there is nothing called %q here — try livellm ls", id)
+	return "", "", fmt.Errorf("there is nothing called %q here — try livellm ls", id)
 }
 
 func isMachine(t string) bool { return strings.HasPrefix(t, "vm-") }
@@ -180,11 +190,29 @@ func cmdRestore(args []string) error {
 			return fmt.Errorf("--at %q isn't a time like 2026-09-25T14:05:00Z", *at)
 		}
 	}
-	t, err := workloadType(id)
+	t, engine, err := workloadKind(id)
 	if err != nil {
 		return err
 	}
 	switch {
+	case t == "storage" && engine == "s3":
+		// Object storage has no backups: send what was asked and let the
+		// API say so, with no made-up password and no --as demand.
+		body := map[string]any{}
+		if *as != "" {
+			body["id"] = *as
+		}
+		if *at != "" {
+			body["pointInTime"] = *at
+		}
+		if placement != nil {
+			body["placement"] = placement
+		}
+		var out map[string]any
+		if err := call("POST", backupsPath(id)+"/"+url.PathEscape(backup)+"/restore", body, &out); err != nil {
+			return err
+		}
+		return print(out)
 	case t == "storage":
 		if *as == "" {
 			return fmt.Errorf("a database restores into a new one: pass --as NEW-ID (%s keeps running as it is)", id)

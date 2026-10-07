@@ -235,16 +235,18 @@ are its login: `credentials.username` is the access key (made for you when
 left out) and `credentials.password` the secret key, never shown again. They
 are the server's root keys: whoever holds them can read and delete every
 bucket and manage its users and policies. A new secret key restarts it, and
-the apps linked with its keys need a restart too.
+the apps linked with its keys need a restart too. Keep the secret key out of
+files and your shell history: read it into a variable and hand the settings
+over without writing them down.
 
 ```sh
-cat > files.json <<'JSON'
-{ "id": "files", "engine": "s3", "storageSize": "20Gi",
-  "credentials": { "password": "<the secret key, 8 to 128 characters>" },
-  "adminConsole": true,
-  "network": { "expose": true, "allowlist": ["203.0.113.0/24"] } }
-JSON
-livellm create storage -f files.json
+read -rs S3_SECRET                              # the secret key, 8 to 128 characters; nothing is echoed
+livellm create storage -f <(jq -n --arg pw "$S3_SECRET" '{
+  id: "files", engine: "s3", storageSize: "20Gi",
+  credentials: { password: $pw },
+  adminConsole: true,
+  network: { expose: true, allowlist: ["203.0.113.0/24"] } }')
+unset S3_SECRET
 livellm ls --type storage                       # each database with its engine: postgres, redis or s3
 livellm connect files                           # endpoint, access key, region, bucket, console
 livellm reach files                             # what links it; inside it is reached on port 9000

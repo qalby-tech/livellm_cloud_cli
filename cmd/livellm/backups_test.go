@@ -137,6 +137,12 @@ func TestObjectStorageBackupsSayTheAPIsWords(t *testing.T) {
 			_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"files","type":"storage","storage":{"engine":"s3"}}]}}`))
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/restore") {
+			b, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(b), "credentials") {
+				t.Errorf("an object storage restore sent a password: %s", b)
+			}
+		}
 		w.WriteHeader(400)
 		_, _ = w.Write([]byte(`{"error":"` + words + `"}`))
 	}))
@@ -144,9 +150,10 @@ func TestObjectStorageBackupsSayTheAPIsWords(t *testing.T) {
 	t.Setenv("LIVELLM_API_URL", srv.URL)
 	t.Setenv("LIVELLM_API_KEY", "llc_test")
 	for name, run := range map[string]func() error{
-		"backups": func() error { return cmdBackups([]string{"files"}) },
-		"backup":  func() error { return cmdBackup([]string{"files"}) },
-		"restore": func() error { return cmdRestore([]string{"files", "b1", "--as", "files-2"}) },
+		"backups":              func() error { return cmdBackups([]string{"files"}) },
+		"backup":               func() error { return cmdBackup([]string{"files"}) },
+		"restore":              func() error { return cmdRestore([]string{"files", "b1", "--as", "files-2"}) },
+		"restore without --as": func() error { return cmdRestore([]string{"files", "b1"}) },
 	} {
 		out, _, err := captured(t, run)
 		if err == nil || !strings.Contains(err.Error(), words) || exitCode(err) != 1 {

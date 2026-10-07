@@ -8,7 +8,8 @@ platform and attaches them to the GitHub release.
 - Object storage: a database of the engine `s3` (S3 buckets, no backups).
   `create storage -f` passes `"engine": "s3"` on as it is, `connect` prints its
   endpoint, access key, region, bucket and console, and `backups`, `backup` and
-  `restore` say what the API says (it has none).
+  `restore` say what the API says (it has none): `restore` on an object
+  storage asks for no `--as` and sends no password first.
 - `livellm reach` gives an object storage's inside address as `<res>:9000`
   (its S3 port; its console is never reached from inside), where 0.7.0 would
   have given PostgreSQL's `<res>-rw:5432`.
