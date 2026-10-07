@@ -232,8 +232,10 @@ a Desktop App links it (`rm --force` deletes it anyway).
 Object storage is a database of its own engine, `s3`: an S3 server of the
 workspace's own, on its own disk, that starts with one bucket, `app`. Its keys
 are its login: `credentials.username` is the access key (made for you when
-left out) and `credentials.password` the secret key, never shown again. A new
-secret key restarts it, and the apps linked with its keys need a restart too.
+left out) and `credentials.password` the secret key, never shown again. They
+are the server's root keys: whoever holds them can read and delete every
+bucket and manage its users and policies. A new secret key restarts it, and
+the apps linked with its keys need a restart too.
 
 ```sh
 cat > files.json <<'JSON'
@@ -258,12 +260,19 @@ has no `database`, `username`, `password` or `url`:
   "AWS_SECRET_ACCESS_KEY": "secretKey", "AWS_REGION": "region", "S3_BUCKET": "bucket" } }
 ```
 
+A link with `accessKey` and `secretKey` gives the app the root keys. For an app
+you trust less, make it a key of its own in the console (limited to one
+bucket) and give it as a secret variable. A new secret key doesn't remove the
+users or keys made in the console: check them there after changing it.
+
 `livellm link` links it reach only, from an app, a machine or a Desktop App.
 Use path-style addressing in your S3 client. Make more buckets with any S3
-tool or in its console. With `adminConsole` its console is at
-`https://<id>-admin-<workspace>.<apps domain>/rustfs/console/` and signs in
-with the keys; with `network.expose` it answers S3 over HTTPS at
-`https://<id>-<workspace>.<apps domain>`. The allowlist covers both addresses.
+tool or in its console. With `network.expose` it answers S3 over HTTPS at
+`https://<id>-<workspace>.<apps domain>`. With `adminConsole` its console is
+at `https://<id>-admin-<workspace>.<apps domain>/rustfs/console/` and signs in
+with the keys, and that address answers S3 requests signed with the keys too:
+the console alone puts your buckets on the internet, even with `expose` off.
+The allowlist covers both addresses; set one whenever either is on.
 It keeps one copy of your files and has no backups: deleting a file, a bucket
 or the object storage is final (`livellm backups files` says so).
 
