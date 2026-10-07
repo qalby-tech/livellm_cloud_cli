@@ -94,6 +94,9 @@ func resources() ([]resource, error) {
 				Browser *struct {
 					Engine string `json:"engine"`
 				} `json:"browser"`
+				Storage *struct {
+					Engine string `json:"engine"`
+				} `json:"storage"`
 			} `json:"workloads"`
 		} `json:"spec"`
 	}
@@ -142,6 +145,11 @@ func resources() ([]resource, error) {
 		// as it was, and a Browser API has none (it holds either engine).
 		if w.Browser != nil && w.Browser.Engine == camoufox {
 			r.Engine = camoufox
+		}
+		// A database names its engine, as the platform stores it on every
+		// one: postgres, redis or s3 (object storage).
+		if w.Storage != nil {
+			r.Engine = w.Storage.Engine
 		}
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]

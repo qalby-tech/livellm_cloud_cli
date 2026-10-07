@@ -65,6 +65,47 @@ inside the workspace: reached only by what links it: web (links it), desk (links
 == writes
 POST /v1/workloads/db/connect {}
 `,
+	"connect-object-storage": `== stdout
+{
+  "accessKey": "filesapp",
+  "bucket": "app",
+  "console": "https://files-admin-ws.apps.example/rustfs/console/",
+  "engine": "s3",
+  "inside": {
+    "addresses": [
+      {
+        "host": "ws-files",
+        "port": 9000
+      }
+    ],
+    "alsoFrom": [
+      {
+        "id": "uploader",
+        "why": "links it"
+      }
+    ]
+  },
+  "private": {
+    "endpoint": "http://ws-files:9000",
+    "host": "ws-files",
+    "port": 9000
+  },
+  "public": {
+    "endpoint": "https://files-ws.apps.example",
+    "host": "files-ws.apps.example",
+    "pathStyle": true,
+    "port": 443
+  },
+  "region": "us-east-1",
+  "secretKey": "set when the object storage was made; it can't be read back",
+  "tool": "api",
+  "type": "storage"
+}
+== stderr
+inside the workspace: reached only by what links it: uploader (links it)
+== writes
+POST /v1/workloads/files/connect {}
+`,
 	"create-apps-join-no-reachable-from": `== stdout
 {
   "created": null
@@ -247,6 +288,49 @@ PATCH /v1/workloads/desk {"desktop":{"databases":[{"id":"db"},{"id":"cache"}]}}
 == stderr
 == writes
 PATCH /v1/workloads/win {"vm":{"databases":[{"id":"cache"},{"id":"db"}]}}
+`,
+	"link-object-storage-already": `== stdout
+{
+  "databases": [
+    "files"
+  ],
+  "id": "uploader",
+  "note": "nothing to add: already linked"
+}
+== stderr
+== writes
+
+`,
+	"link-object-storage-app": `== stdout
+{
+  "databases": [
+    "cache",
+    "files"
+  ],
+  "id": "edge",
+  "linked": [
+    "files"
+  ],
+  "note": "reach only: no variables, the app doesn't restart"
+}
+== stderr
+== writes
+PATCH /v1/workloads/edge {"pod":{"databases":[{"id":"cache"},{"id":"files"}]}}
+`,
+	"link-object-storage-machine": `== stdout
+{
+  "databases": [
+    "files"
+  ],
+  "id": "win",
+  "linked": [
+    "files"
+  ],
+  "note": "reach only: nothing goes into the machine"
+}
+== stderr
+== writes
+PATCH /v1/workloads/win {"vm":{"databases":[{"id":"files"}]}}
 `,
 	"link-remove-machine": `== stdout
 {
@@ -674,6 +758,51 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
   "reachableFrom": [
     "*"
   ]
+}
+== stderr
+== writes
+
+`,
+	"reach-show-object-storage": `== stdout
+{
+  "addresses": [
+    {
+      "host": "ws-files",
+      "port": 9000
+    }
+  ],
+  "alsoFrom": [
+    {
+      "id": "uploader",
+      "why": "links it"
+    }
+  ],
+  "change": "livellm link APP|MACHINE files (--remove takes a link out)",
+  "id": "files",
+  "means": "only what links it",
+  "note": "the platform hasn't closed this workspace yet: until it does, the whole workspace may still reach it"
+}
+== stderr
+== writes
+
+`,
+	"reach-show-object-storage-closed": `== stdout
+{
+  "addresses": [
+    {
+      "host": "ws-files",
+      "port": 9000
+    }
+  ],
+  "alsoFrom": [
+    {
+      "id": "uploader",
+      "why": "links it"
+    }
+  ],
+  "change": "livellm link APP|MACHINE files (--remove takes a link out)",
+  "id": "files",
+  "means": "only what links it"
 }
 == stderr
 == writes

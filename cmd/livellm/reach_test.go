@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,8 @@ const insideWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"db","type":"storage","storage":{"engine":"postgres"}},
 	{"id":"cache","type":"storage","storage":{"engine":"redis"}},
 	{"id":"lone","type":"storage","storage":{"engine":"postgres"}},
+	{"id":"files","type":"storage","storage":{"engine":"s3"}},
+	{"id":"uploader","type":"pod","reachableFrom":[],"pod":{"image":"busybox","databases":[{"id":"files","env":{"AWS_ENDPOINT_URL_S3":"endpoint","AWS_ACCESS_KEY_ID":"accessKey","AWS_SECRET_ACCESS_KEY":"secretKey","AWS_REGION":"region","S3_BUCKET":"bucket"}}]}},
 	{"id":"b1","type":"browser","reachableFrom":[]},
 	{"id":"pool","type":"controller","reachableFrom":["edge"],"controller":{"autodiscover":false,"browsers":["b1"]}},
 	{"id":"every","type":"controller","controller":{"autodiscover":true}},
@@ -42,6 +45,15 @@ const insideConnect = `{"tool":"api","type":"storage","engine":"postgres",
 	"inside":{"alsoFrom":[{"id":"web","why":"links it"},{"id":"desk","why":"links it"}],
 		"addresses":[{"host":"ws-db-rw","port":5432}]}}`
 
+// insideConnectS3 is an object storage's connect answer: S3 keys, region,
+// bucket, its addresses and console; the secret key is never in it.
+const insideConnectS3 = `{"tool":"api","type":"storage","engine":"s3","accessKey":"filesapp","region":"us-east-1","bucket":"app",
+	"private":{"host":"ws-files","port":9000,"endpoint":"http://ws-files:9000"},
+	"public":{"host":"files-ws.apps.example","port":443,"endpoint":"https://files-ws.apps.example","pathStyle":true},
+	"console":"https://files-admin-ws.apps.example/rustfs/console/",
+	"secretKey":"set when the object storage was made; it can't be read back",
+	"inside":{"alsoFrom":[{"id":"uploader","why":"links it"}],"addresses":[{"host":"ws-files","port":9000}]}}`
+
 func TestGoldenInsideAccess(t *testing.T) {
 	file := func(name, body string) string {
 		f := filepath.Join(t.TempDir(), name)
@@ -60,6 +72,11 @@ func TestGoldenInsideAccess(t *testing.T) {
 		{"reach-show-database-redis", func() error { return cmdReach([]string{"cache"}) }},
 		{"reach-show-database-unlinked", func() error { return cmdReach([]string{"lone"}) }},
 		{"reach-show-database-unlinked-closed", func() error { return cmdReach([]string{"lone"}) }},
+		{"reach-show-object-storage", func() error { return cmdReach([]string{"files"}) }},
+		{"reach-show-object-storage-closed", func() error { return cmdReach([]string{"files"}) }},
+		{"link-object-storage-app", func() error { return cmdLink([]string{"edge", "files"}) }},
+		{"link-object-storage-machine", func() error { return cmdLink([]string{"win", "files"}) }},
+		{"link-object-storage-already", func() error { return cmdLink([]string{"uploader", "files"}) }},
 		{"reach-show-database-linked-closed", func() error { return cmdReach([]string{"db"}) }},
 		{"reach-show-browser-driven-closed", func() error { return cmdReach([]string{"b1"}) }},
 		{"reach-show-browser-driven", func() error { return cmdReach([]string{"b1"}) }},
@@ -126,6 +143,7 @@ func TestGoldenInsideAccess(t *testing.T) {
 			return cmdAPIKeys([]string{"create", "ci", "--permissions", "network"})
 		}},
 		{"connect-inside", func() error { return cmdConnect([]string{"db"}) }},
+		{"connect-object-storage", func() error { return cmdConnect([]string{"files"}) }},
 	}
 	written := map[string]string{}
 	for _, c := range cases {
@@ -134,8 +152,9 @@ func TestGoldenInsideAccess(t *testing.T) {
 			ws = insideClosedWorkspace
 		}
 		g := newGoldenAPI(t, map[string]string{
-			"GET /v1/workspace":             ws,
-			"POST /v1/workloads/db/connect": insideConnect,
+			"GET /v1/workspace":                ws,
+			"POST /v1/workloads/db/connect":    insideConnect,
+			"POST /v1/workloads/files/connect": insideConnectS3,
 		})
 		out, errOut, err := captured(t, c.run)
 		if err != nil {
@@ -292,5 +311,39 @@ func TestInsideAddressesStackDefaultHostname(t *testing.T) {
 		"ports": []any{map[string]any{"name": "http", "port": float64(80)}}}}
 	if got := insideAddresses("ws-api", lone); got[0]["inStack"] != nil {
 		t.Errorf("an app on its own has no stack mates: %v", got)
+	}
+}
+
+// A database's inside addresses follow its engine: PostgreSQL's primary on
+// <res>-rw:5432, Redis on <res>:6379, object storage's S3 on <res>:9000 (its
+// console is never reached from inside).
+func TestInsideAddressesByEngine(t *testing.T) {
+	for engine, want := range map[string]string{"postgres": "ws-d-rw:5432", "redis": "ws-d:6379", "s3": "ws-d:9000"} {
+		w := map[string]any{"id": "d", "type": "storage", "storage": map[string]any{"engine": engine}}
+		got := insideAddresses("ws-d", w)
+		if len(got) != 1 || fmt.Sprintf("%v:%v", got[0]["host"], got[0]["port"]) != want {
+			t.Errorf("%s: %v, want %s", engine, got, want)
+		}
+	}
+}
+
+// ls names every database's engine (an object storage's is s3), and none for
+// an app or a machine.
+func TestListNamesDatabaseEngine(t *testing.T) {
+	newGoldenAPI(t, map[string]string{"GET /v1/workspace": insideWorkspace})
+	out, _, err := captured(t, func() error { return cmdList(nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, raw := range printed(t, out)["resources"].([]any) {
+		m := raw.(map[string]any)
+		got[m["id"].(string)] = m["engine"]
+	}
+	want := map[string]any{"db": "postgres", "cache": "redis", "lone": "postgres", "files": "s3", "web": nil, "box": nil, "uploader": nil}
+	for id, e := range want {
+		if got[id] != e {
+			t.Errorf("%s: engine %v, want %v", id, got[id], e)
+		}
 	}
 }

@@ -612,8 +612,13 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 		}
 		return out
 	case t == "storage":
-		if e, _ := block(w, "storage")["engine"].(string); e == "redis" {
+		// By engine, as the platform names them: PostgreSQL's primary on
+		// <res>-rw, Redis and object storage (S3, never its console) on <res>.
+		switch e, _ := block(w, "storage")["engine"].(string); e {
+		case "redis":
 			return []map[string]any{hp(res, 6379)}
+		case "s3":
+			return []map[string]any{hp(res, 9000)}
 		}
 		return []map[string]any{hp(res+"-rw", 5432)}
 	case t == "browser":

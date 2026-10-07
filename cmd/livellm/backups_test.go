@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,36 @@ func TestBackupRequests(t *testing.T) {
 	creds, _ := last.body["credentials"].(map[string]any)
 	if pw, _ := creds["password"].(string); len(pw) < 20 {
 		t.Errorf("a made-up password should be strong, sent %v", last.body)
+	}
+}
+
+// An object storage has no backups: backups, backup and restore pass the
+// API's 400 on as it said it, and print nothing (no made-up password).
+func TestObjectStorageBackupsSayTheAPIsWords(t *testing.T) {
+	const words = "object storage has no backups yet: it keeps one copy of your files"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/workspace" {
+			_, _ = w.Write([]byte(`{"spec":{"workloads":[{"id":"files","type":"storage","storage":{"engine":"s3"}}]}}`))
+			return
+		}
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"error":"` + words + `"}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+	for name, run := range map[string]func() error{
+		"backups": func() error { return cmdBackups([]string{"files"}) },
+		"backup":  func() error { return cmdBackup([]string{"files"}) },
+		"restore": func() error { return cmdRestore([]string{"files", "b1", "--as", "files-2"}) },
+	} {
+		out, _, err := captured(t, run)
+		if err == nil || !strings.Contains(err.Error(), words) || exitCode(err) != 1 {
+			t.Errorf("%s: %v (exit %d)", name, err, exitCode(err))
+		}
+		if out != "" {
+			t.Errorf("%s printed %q", name, out)
+		}
 	}
 }

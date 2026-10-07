@@ -3,6 +3,21 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.8.0
+
+- Object storage: a database of the engine `s3` (S3 buckets, no backups).
+  `create storage -f` passes `"engine": "s3"` on as it is, `connect` prints its
+  endpoint, access key, region, bucket and console, and `backups`, `backup` and
+  `restore` say what the API says (it has none).
+- `livellm reach` gives an object storage's inside address as `<res>:9000`
+  (its S3 port; its console is never reached from inside), where 0.7.0 would
+  have given PostgreSQL's `<res>-rw:5432`.
+- `livellm ls` names every database's engine: `postgres`, `redis` or `s3`.
+- `link` links an object storage reach only from an app, a machine or a
+  Desktop App, as any database; an app's link with variables takes the S3
+  ones (`endpoint`, `host`, `port`, `region`, `bucket`, `accessKey`,
+  `secretKey`) in its `databases`.
+
 ## 0.7.0
 
 - Inside the workspace, resources reach each other only when allowed: each

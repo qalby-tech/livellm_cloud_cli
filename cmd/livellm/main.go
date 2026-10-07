@@ -19,7 +19,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm logout                             end this sign-in
   livellm whoami                             workspace, plan and usage
 
-  livellm ls [--type TYPE]                   everything, with its state
+  livellm ls [--type TYPE]                   everything, with its state (a database: its engine)
   livellm status [ID]                        how things are running right now
   livellm wait ID [--timeout 15m]            until it is ready (exits non-zero if it isn't)
   livellm install ID                         a new machine's way to its first boot
@@ -44,6 +44,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              (a location takes a host that is ready and schedulable)
 
   livellm create TYPE -f FILE                create a resource from a JSON file
+                                             a database (storage): "engine": "postgres", "redis" or
+                                             "s3" (object storage: S3 buckets, no backups)
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
                                              or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
                                              set ID -f with {"<block>": {"placement": null}}: automatic again
@@ -73,7 +75,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
 
-  livellm backups ID                         a machine's or a database's backups
+  livellm backups ID                         a machine's or a database's backups (object storage has none)
   livellm backup ID                          back up now
           [--clean] [--name N]               (a machine: stopped first; its name)
   livellm restore ID BACKUP                  a machine: put its disk back (stop it first)

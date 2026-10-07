@@ -229,6 +229,44 @@ first service (the whole app reaches the database either way); `--remove` takes
 the service's id. A database can't be deleted while an app, a machine or
 a Desktop App links it (`rm --force` deletes it anyway).
 
+Object storage is a database of its own engine, `s3`: an S3 server of the
+workspace's own, on its own disk, that starts with one bucket, `app`. Its keys
+are its login: `credentials.username` is the access key (made for you when
+left out) and `credentials.password` the secret key, never shown again. A new
+secret key restarts it, and the apps linked with its keys need a restart too.
+
+```sh
+cat > files.json <<'JSON'
+{ "id": "files", "engine": "s3", "storageSize": "20Gi",
+  "credentials": { "password": "<the secret key, 8 to 128 characters>" },
+  "adminConsole": true,
+  "network": { "expose": true, "allowlist": ["203.0.113.0/24"] } }
+JSON
+livellm create storage -f files.json
+livellm ls --type storage                       # each database with its engine: postgres, redis or s3
+livellm connect files                           # endpoint, access key, region, bucket, console
+livellm reach files                             # what links it; inside it is reached on port 9000
+```
+
+An app links it like any database, with its own variables: `endpoint`,
+`host`, `port`, `region`, `bucket`, `accessKey` and `secretKey` (the secret key
+comes from its login, never written where anyone can read it). Object storage
+has no `database`, `username`, `password` or `url`:
+
+```json
+{ "id": "files", "env": { "AWS_ENDPOINT_URL_S3": "endpoint", "AWS_ACCESS_KEY_ID": "accessKey",
+  "AWS_SECRET_ACCESS_KEY": "secretKey", "AWS_REGION": "region", "S3_BUCKET": "bucket" } }
+```
+
+`livellm link` links it reach only, from an app, a machine or a Desktop App.
+Use path-style addressing in your S3 client. Make more buckets with any S3
+tool or in its console. With `adminConsole` its console is at
+`https://<id>-admin-<workspace>.<apps domain>/rustfs/console/` and signs in
+with the keys; with `network.expose` it answers S3 over HTTPS at
+`https://<id>-<workspace>.<apps domain>`. The allowlist covers both addresses.
+It keeps one copy of your files and has no backups: deleting a file, a bucket
+or the object storage is final (`livellm backups files` says so).
+
 Backups work the same way for machines and databases:
 
 ```sh
