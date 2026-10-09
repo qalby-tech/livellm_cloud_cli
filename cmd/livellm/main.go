@@ -95,7 +95,9 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
   livellm plan                               the plan, and what the workspace uses of it
   livellm plan catalog | plan set PLAN | plan metered on|off
-                                             change it (a key needs the billing permission)
+                                             change it (a key needs the billing permission);
+                                             on an organization's workspace its owners change the plan
+                                             in the console (plan set and plan metered answer 409)
   livellm invoices [ID]                      monthly invoices, or one
   livellm agents [ls] | agents rm ID         agents signed in; sign one out
   livellm api-keys [ls]                      the workspace's API keys

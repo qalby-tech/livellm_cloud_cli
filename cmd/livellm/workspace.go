@@ -404,7 +404,9 @@ func readSSHKeys(raw []byte) ([]map[string]any, error) {
 
 // cmdPlan shows the plan and what the workspace uses of it; `plan set` and
 // `plan metered` change it, which a person can always do and a key only when
-// a person gave it the billing permission.
+// a person gave it the billing permission. On an organization's workspace its
+// owners change the plan in the console (plan set and plan metered answer
+// 409); the API's message is printed as it comes.
 func cmdPlan(args []string) error {
 	if len(args) == 0 {
 		var out map[string]any

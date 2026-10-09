@@ -329,7 +329,9 @@ livellm plan                                    # the plan and what the workspac
 ```
 
 An API key changes the plan (`plan set`, `plan metered on|off`) only when a
-person gave it the billing permission on the console's Keys page.
+person gave it the billing permission on the console's Keys page. On an
+organization's workspace its owners manage the plan in the console: `plan set`
+and `plan metered` answer 409 there.
 
 ## Inside the workspace
 
@@ -385,13 +387,13 @@ nothing.
 `monitoring` prints every resource (up or down, since when, uptime over 24
 hours and 7 days, processor, memory and disk use) and the alerts: open ones
 (no `resolvedAt`) first, then the last 7 days' resolved ones. `emailAlerts`
-says whether the workspace owner is emailed when an alert opens and when it is
-over; switch it on the console's Monitoring page. The fields are described at
+says whether the workspace's owners are emailed when an alert opens and when it
+is over; switch it on the console's Monitoring page. The fields are described at
 [docs.live-llm.com/docs/monitoring](https://docs.live-llm.com/docs/monitoring).
 
-`login` asks for full access by default: you are the person who owns the
-workspace. `--access use` or `--access create` narrows it, and the console
-shows what is being asked for before you press Allow.
+`login` asks for full access by default: everything the person who presses
+Allow may do in the workspace. `--access use` or `--access create` narrows it,
+and the console shows what is being asked for before you press Allow.
 
 Without `--wait`, `login` prints the link as JSON and returns at once, which
 suits an agent that can't sit and wait: give the person the link, and once they

@@ -607,3 +607,53 @@ func TestPermissionListOldNames(t *testing.T) {
 		t.Errorf("billing: sent %v, stderr %q", got, errOut)
 	}
 }
+
+// On an organization's workspace its owners change the plan in the console:
+// plan set and plan metered get the API's 409 and print its words as they
+// came, with no next step of the CLI's own, and the help says so.
+func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
+	const refusal = "Billing for this workspace is managed by Acme."
+	var sent []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent = append(sent, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"` + refusal + `","code":"organization_billing"}`))
+	}))
+	defer srv.Close()
+	t.Setenv("LIVELLM_API_URL", srv.URL)
+	t.Setenv("LIVELLM_API_KEY", "llc_test")
+
+	for _, c := range []struct {
+		args []string
+		path string
+	}{
+		{[]string{"set", "pro"}, "PUT /v1/subscription"},
+		{[]string{"metered", "on"}, "PUT /v1/billing-mode"},
+		{[]string{"metered", "off"}, "PUT /v1/billing-mode"},
+	} {
+		sent = nil
+		err := networkNext(engineNext(cmdPlan(c.args)))
+		if !reflect.DeepEqual(sent, []string{c.path}) {
+			t.Errorf("plan %v: sent %v, want %s", c.args, sent, c.path)
+		}
+		var p *problem
+		if !asProblem(err, &p) {
+			t.Fatalf("plan %v: not the API's refusal: %v", c.args, err)
+		}
+		if p.Status != 409 || p.Msg != refusal || p.Code != "organization_billing" || p.Next != "" {
+			t.Errorf("plan %v: %+v", c.args, p)
+		}
+		if err.Error() != refusal+" (409)" {
+			t.Errorf("plan %v printed %q", c.args, err.Error())
+		}
+		if exitCode(err) != 4 {
+			t.Errorf("plan %v: exit %d, want 4", c.args, exitCode(err))
+		}
+	}
+
+	help := strings.Join(strings.Fields(usage), " ")
+	if !strings.Contains(help, "on an organization's workspace its owners change the plan in the console (plan set and plan metered answer 409)") {
+		t.Errorf("the help doesn't say who changes an organization workspace's plan")
+	}
+}
