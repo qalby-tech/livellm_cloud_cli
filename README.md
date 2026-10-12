@@ -329,9 +329,14 @@ livellm plan                                    # the plan and what the workspac
 livellm plan payg on --limit 20                 # pay as you go on, its limit lowered to $20 a month
 ```
 
+A personal workspace is on Free, Starter, Pro or Max; an organization's is on
+Team, Startup or Business, which its owners choose in the console, or on
+Enterprise, by agreement with LiveLLM. `livellm plan catalog` lists them with
+what each includes.
+
 Pay as you go lets the workspace go past its plan, and what is above the plan
-is billed; with it off, whatever doesn't fit is refused. Starter includes no
-resources, so on Starter everything is pay as you go. `--limit DOLLARS`
+is billed; with it off, whatever doesn't fit is refused. Free includes no
+resources, so on Free everything is pay as you go. `--limit DOLLARS`
 lowers the most pay as you go may cost a month; it can't raise it (a LiveLLM
 that takes no payments has no limit). `plan metered on|off` is the same
 command under its old name.

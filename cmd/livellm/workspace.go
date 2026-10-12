@@ -405,10 +405,12 @@ func readSSHKeys(raw []byte) ([]map[string]any, error) {
 // --- plan ------------------------------------------------------------------------
 
 // cmdPlan shows the plan and what the workspace uses of it; `plan set` and
-// `plan payg` (`plan metered` is its old name) change it, which a person can
-// always do and a key only when a person gave it the billing permission. On an
-// organization's workspace its owners change the plan in the console (plan set
-// and plan payg answer 409); the API's message is printed as it comes.
+// `plan payg` (`plan metered` is its old name) change it, but only through a
+// key a person gave the billing permission: a `livellm login` sign-in is an
+// agent, and the API refuses it (403). A person changes the plan in the
+// console. On an organization's workspace its owners change the plan in the
+// console (plan set and plan payg answer 409); the API's message is printed
+// as it comes.
 func cmdPlan(args []string) error {
 	if len(args) == 0 {
 		var out map[string]any

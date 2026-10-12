@@ -699,7 +699,7 @@ func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 		next      string
 		mentioned []string
 	}{
-		{402, `{"error":"Starter includes no resources. Turn on pay as you go, or choose Pro, on the Billing page.","code":"payg_off"}`,
+		{402, `{"error":"Free includes no resources. Turn on pay as you go, or choose Pro, on the Billing page.","code":"payg_off"}`,
 			paygOnByKey, []string{"ask the user first", "turn on pay as you go", "Billing page", "once they agree, run: livellm plan payg on",
 				"this key needs the billing permission"}},
 		{402, `{"error":"This would bring pay as you go to $140 a month, past your $100 limit. Raise it on the Billing page.","code":"payg_limit"}`,
@@ -710,7 +710,7 @@ func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 			billingNexts["payment_overdue"], []string{"pay the open invoice on the console's Billing page", "what runs keeps running"}},
 		{403, `{"error":"Pay as you go isn't open to new accounts yet.","code":"payg_not_offered"}`,
 			billingNexts["payg_not_offered"], []string{"tell the user", "aren't open to this account yet"}},
-		{402, `{"error":"Starter includes no resources.","code":"payg_off","next":"the API's own step"}`,
+		{402, `{"error":"Free includes no resources.","code":"payg_off","next":"the API's own step"}`,
 			"the API's own step", nil},
 		{402, `{"error":"subscription \"starter\" pool exceeded: CPU (3/2 cores) — upgrade or enable metered overage"}`, "", nil},
 		{402, `{"error":"This workspace is using its share of Acme.","code":"organization_share"}`, "", nil},
@@ -768,7 +768,7 @@ func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 // offers plan payg on. payg_limit offers no command to either.
 func TestBillingNextByCredential(t *testing.T) {
 	t.Setenv("LIVELLM_API_KEY", "")
-	off := &problem{Status: 402, Msg: "Starter includes no resources.", Code: "payg_off"}
+	off := &problem{Status: 402, Msg: "Free includes no resources.", Code: "payg_off"}
 	if billingNext(off); off.Next != billingNexts["payg_off"] || strings.Contains(off.Next, "livellm") {
 		t.Errorf("sign-in, payg_off: %q", off.Next)
 	}
@@ -780,7 +780,7 @@ func TestBillingNextByCredential(t *testing.T) {
 		t.Errorf("sign-in, payg_limit: %q", limit.Next)
 	}
 	t.Setenv("LIVELLM_API_KEY", " llc_test ")
-	off = &problem{Status: 402, Msg: "Starter includes no resources.", Code: "payg_off"}
+	off = &problem{Status: 402, Msg: "Free includes no resources.", Code: "payg_off"}
 	if billingNext(off); off.Next != paygOnByKey {
 		t.Errorf("key, payg_off: %q", off.Next)
 	}

@@ -23,6 +23,11 @@ platform and attaches them to the GitHub release.
   the link that pays it is never printed) and pay as you go not open to the
   account (`payg_not_offered`, a 403: tell the user). A next step the API
   sent comes first, as before.
+- `plan set`'s help says only a key with the billing permission changes the
+  plan from here (a sign-in is refused; a person changes it in the console),
+  and the README names the plans: Free, Starter, Pro and Max for a person;
+  Team, Startup and Business, which an organization's owners choose, and
+  Enterprise by agreement.
 
 ## 0.8.0
 

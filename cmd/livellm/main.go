@@ -95,7 +95,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
   livellm plan                               the plan, and what the workspace uses of it
   livellm plan catalog                       the plans there are
-  livellm plan set PLAN                      change it (a key needs the billing permission)
+  livellm plan set PLAN                      change it: only a key with the billing permission (a
+                                             sign-in is refused; a person changes it in the console)
   livellm plan payg on|off [--limit DOLLARS] pay as you go: go past the plan and pay for what is
                                              above it, up to DOLLARS a month; only a key with the
                                              billing permission changes it here, and --limit only
