@@ -632,8 +632,9 @@ func TestPermissionListOldNames(t *testing.T) {
 }
 
 // On an organization's workspace its owners change the plan in the console:
-// plan set and plan payg (or plan metered) get the API's 409 and print its words as they
-// came, with no next step of the CLI's own, and the help says so.
+// plan set and plan payg (or plan metered) get the API's 409 and print its
+// words as they came, with no next step of the CLI's own, and the help says
+// so.
 func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
 	const refusal = "Billing for this workspace is managed by Acme."
 	var sent []string
