@@ -138,6 +138,18 @@ func TestWorkspaceRequests(t *testing.T) {
 			got{"PUT", "/v1/subscription", obj(`{"subscription":"pro"}`)}},
 		{"plan metered", func() error { return cmdPlan([]string{"metered", "on"}) },
 			got{"PUT", "/v1/billing-mode", obj(`{"metered":true}`)}},
+		{"plan payg on", func() error { return cmdPlan([]string{"payg", "on"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":true}`)}},
+		{"plan payg off", func() error { return cmdPlan([]string{"payg", "off"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":false}`)}},
+		{"plan payg on with a limit", func() error { return cmdPlan([]string{"payg", "on", "--limit", "150"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":true,"limitCents":15000}`)}},
+		{"plan payg on with a limit in cents", func() error { return cmdPlan([]string{"payg", "on", "--limit=12.5"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":true,"limitCents":1250}`)}},
+		{"plan payg on with a limit of nothing", func() error { return cmdPlan([]string{"payg", "on", "--limit", "0"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":true,"limitCents":0}`)}},
+		{"plan metered with a limit", func() error { return cmdPlan([]string{"metered", "off", "--limit", "99.99"}) },
+			got{"PUT", "/v1/billing-mode", obj(`{"metered":false,"limitCents":9999}`)}},
 		{"reservations", func() error { return cmdReservations(nil) }, got{"GET", "/v1/reservations", nil}},
 		{"database", func() error { return cmdDatabase([]string{"db"}) }, got{"GET", "/v1/workloads/db/database", nil}},
 		{"install", func() error { return cmdInstall([]string{"win"}) }, got{"GET", "/v1/workloads/win/install-progress", nil}},
@@ -226,7 +238,18 @@ func TestWorkspaceRequests(t *testing.T) {
 		"an rdp ttl that isn't a time":   func() error { return cmdRDP([]string{"win", "--ttl", "tomorrow"}) },
 		"api-keys set without a list":    func() error { return cmdAPIKeys([]string{"set", "key_1"}) },
 		"plan metered maybe":             func() error { return cmdPlan([]string{"metered", "maybe"}) },
-		"create from a template, no id":  func() error { return cmdCreate([]string{"--template", "small box"}) },
+		"plan payg with nothing":         func() error { return cmdPlan([]string{"payg"}) },
+		"plan payg with only a limit":    func() error { return cmdPlan([]string{"payg", "--limit", "50"}) },
+		"plan payg limit with a sign":    func() error { return cmdPlan([]string{"payg", "on", "--limit", "-5"}) },
+		"plan payg limit with a dollar":  func() error { return cmdPlan([]string{"payg", "on", "--limit", "$50"}) },
+		"plan payg limit in tenths of a cent": func() error {
+			return cmdPlan([]string{"payg", "on", "--limit", "1.005"})
+		},
+		"plan payg limit that isn't a number": func() error { return cmdPlan([]string{"payg", "on", "--limit", "lots"}) },
+		"plan payg limit with no value":       func() error { return cmdPlan([]string{"payg", "on", "--limit"}) },
+		"plan payg with something left over":  func() error { return cmdPlan([]string{"payg", "on", "now"}) },
+		"plan payg with an unknown flag":      func() error { return cmdPlan([]string{"payg", "on", "--max", "5"}) },
+		"create from a template, no id":       func() error { return cmdCreate([]string{"--template", "small box"}) },
 		"create from a template with settings in -f": func() error {
 			return cmdCreate([]string{"--template", "api", "--id", "x", "-f", withEnv})
 		},
@@ -609,7 +632,7 @@ func TestPermissionListOldNames(t *testing.T) {
 }
 
 // On an organization's workspace its owners change the plan in the console:
-// plan set and plan metered get the API's 409 and print its words as they
+// plan set and plan payg (or plan metered) get the API's 409 and print its words as they
 // came, with no next step of the CLI's own, and the help says so.
 func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
 	const refusal = "Billing for this workspace is managed by Acme."
@@ -631,9 +654,11 @@ func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
 		{[]string{"set", "pro"}, "PUT /v1/subscription"},
 		{[]string{"metered", "on"}, "PUT /v1/billing-mode"},
 		{[]string{"metered", "off"}, "PUT /v1/billing-mode"},
+		{[]string{"payg", "on"}, "PUT /v1/billing-mode"},
+		{[]string{"payg", "off", "--limit", "20"}, "PUT /v1/billing-mode"},
 	} {
 		sent = nil
-		err := networkNext(engineNext(cmdPlan(c.args)))
+		err := billingNext(networkNext(engineNext(cmdPlan(c.args))))
 		if !reflect.DeepEqual(sent, []string{c.path}) {
 			t.Errorf("plan %v: sent %v, want %s", c.args, sent, c.path)
 		}
@@ -653,7 +678,94 @@ func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
 	}
 
 	help := strings.Join(strings.Fields(usage), " ")
-	if !strings.Contains(help, "on an organization's workspace its owners change the plan in the console (plan set and plan metered answer 409)") {
+	if !strings.Contains(help, "on an organization's workspace its owners change the plan in the console (plan set and plan payg answer 409)") {
 		t.Errorf("the help doesn't say who changes an organization workspace's plan")
+	}
+}
+
+// A billing refusal gets the CLI's next step by its code, after the API's own
+// words: turn on pay as you go or choose a bigger plan, raise the limit, add a
+// card, pay the open invoice (never its link), or, for pay as you go not open
+// to the account, tell the user. A next step the API sent wins, a code the CLI
+// doesn't know and an older API's uncoded full plan stay as they came, and
+// each is something the user acts on (exit 2).
+func TestBillingRefusalsSayWhatToDo(t *testing.T) {
+	for _, c := range []struct {
+		status    int
+		body      string
+		next      string
+		mentioned []string
+	}{
+		{402, `{"error":"Starter includes no resources. Turn on pay as you go, or choose Pro, on the Billing page.","code":"payg_off"}`,
+			billingNexts["payg_off"], []string{"ask the user first", "turn on pay as you go", "Billing page", "livellm plan payg on"}},
+		{402, `{"error":"This would bring pay as you go to $140 a month, past your $100 limit. Raise it on the Billing page.","code":"payg_limit"}`,
+			billingNexts["payg_limit"], []string{"raise it on the console's Billing page", "--limit DOLLARS", "a key can only lower it"}},
+		{402, `{"error":"Add a card first: Billing → Add a card.","code":"card_required","checkout":"card"}`,
+			billingNexts["card_required"], []string{"add one on the console's Billing page", "only a person adds a card"}},
+		{402, `{"error":"A payment failed on 3 November. Pay the open invoice to add resources.","code":"payment_overdue","payUrl":"https://invoice.example/i/secret"}`,
+			billingNexts["payment_overdue"], []string{"pay the open invoice on the console's Billing page", "what runs keeps running"}},
+		{403, `{"error":"Pay as you go isn't open to new accounts yet.","code":"payg_not_offered"}`,
+			billingNexts["payg_not_offered"], []string{"tell the user", "aren't open to this account yet"}},
+		{402, `{"error":"Starter includes no resources.","code":"payg_off","next":"the API's own step"}`,
+			"the API's own step", nil},
+		{402, `{"error":"subscription \"starter\" pool exceeded: CPU (3/2 cores) — upgrade or enable metered overage"}`, "", nil},
+		{402, `{"error":"This workspace is using its share of Acme.","code":"organization_share"}`, "", nil},
+		{403, `{"error":"Not this one.","code":"something_new"}`, "", nil},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(c.status)
+			_, _ = w.Write([]byte(c.body))
+		}))
+		t.Setenv("LIVELLM_API_URL", srv.URL)
+		t.Setenv("LIVELLM_API_KEY", "llc_test")
+		err := billingNext(networkNext(engineNext(cmdPlan([]string{"payg", "on"}))))
+		srv.Close()
+		var p *problem
+		if !asProblem(err, &p) {
+			t.Fatalf("%s: not the API's refusal: %v", c.body, err)
+		}
+		if p.Next != c.next {
+			t.Errorf("%s: next %q, want %q", c.body, p.Next, c.next)
+		}
+		for _, m := range c.mentioned {
+			if !strings.Contains(p.Next, m) {
+				t.Errorf("%s: next %q doesn't say %q", c.body, p.Next, m)
+			}
+		}
+		if strings.Contains(err.Error(), "invoice.example") {
+			t.Errorf("%s: the payment's link is printed: %s", c.body, err)
+		}
+		var api struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal([]byte(c.body), &api)
+		if !strings.HasPrefix(err.Error(), api.Error+" (") {
+			t.Errorf("%s: printed %q, not the API's words first", c.body, err)
+		}
+		if exitCode(err) != 2 {
+			t.Errorf("%s: exit %d, want 2", c.body, exitCode(err))
+		}
+	}
+	help := strings.Join(strings.Fields(usage), " ")
+	for _, want := range []string{"livellm plan payg on|off [--limit DOLLARS]", "a key may only lower the limit", "plan metered is the same"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("the help doesn't say %q", want)
+		}
+	}
+}
+
+// --limit is dollars a month, sent as cents; anything else is refused before
+// a request goes.
+func TestDollarsToCents(t *testing.T) {
+	for in, want := range map[string]int64{"0": 0, "1": 100, "100": 10000, "12.5": 1250, "12.50": 1250, "0.01": 1, " 7 ": 700, "999999999.99": 99999999999} {
+		if got, err := dollarsToCents(in); err != nil || got != want {
+			t.Errorf("%q: %d, %v; want %d", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "-1", "+1", "$5", "1.005", "1.", ".5", "1e3", "NaN", "Inf", "1,000", "1000000000"} {
+		if got, err := dollarsToCents(in); err == nil {
+			t.Errorf("%q: %d, want refused", in, got)
+		}
 	}
 }

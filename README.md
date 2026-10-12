@@ -326,12 +326,22 @@ livellm screenshot win-lab -o now.jpg           # a picture of its screen
 livellm keys set -f ~/.ssh/id_ed25519.pub       # the workspace's SSH keys, replaced
 livellm api-keys create ci                      # a new key; its secret is shown once
 livellm plan                                    # the plan and what the workspace uses of it
+livellm plan payg on --limit 50                 # pay as you go, up to $50 a month above the plan
 ```
 
-An API key changes the plan (`plan set`, `plan metered on|off`) only when a
-person gave it the billing permission on the console's Keys page. On an
-organization's workspace its owners manage the plan in the console: `plan set`
-and `plan metered` answer 409 there.
+Pay as you go lets the workspace go past its plan, and what is above the plan
+is billed; with it off, whatever doesn't fit is refused. Starter includes no
+resources, so on Starter everything is pay as you go. `--limit DOLLARS` sets
+the most pay as you go may cost a month (a LiveLLM that takes no payments has
+no limit). `plan metered on|off` is the same command under its old name.
+
+An API key changes the plan (`plan set`, `plan payg on|off`) only when a
+person gave it the billing permission on the console's Keys page, and may only
+lower the limit. Adding a card and paying an invoice are a person's, on the
+console's Billing page; when a create is refused for one of them, or because
+pay as you go is off, past its limit or not yet open to the account, the error
+says what to do next (exit 2). On an organization's workspace its owners
+manage the plan in the console: `plan set` and `plan payg` answer 409 there.
 
 ## Inside the workspace
 

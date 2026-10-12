@@ -94,10 +94,12 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              what happened, newest first
   livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
   livellm plan                               the plan, and what the workspace uses of it
-  livellm plan catalog | plan set PLAN | plan metered on|off
-                                             change it (a key needs the billing permission);
-                                             on an organization's workspace its owners change the plan
-                                             in the console (plan set and plan metered answer 409)
+  livellm plan catalog | plan set PLAN       change it (a key needs the billing permission)
+  livellm plan payg on|off [--limit DOLLARS] pay as you go: go past the plan and pay for what is
+                                             above it, up to DOLLARS a month (a key may only lower
+                                             the limit; plan metered is the same); on an
+                                             organization's workspace its owners change the plan
+                                             in the console (plan set and plan payg answer 409)
   livellm invoices [ID]                      monthly invoices, or one
   livellm agents [ls] | agents rm ID         agents signed in; sign one out
   livellm api-keys [ls]                      the workspace's API keys
@@ -287,7 +289,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		err = networkNext(engineNext(err))
+		err = billingNext(networkNext(engineNext(err)))
 		fmt.Fprintln(os.Stderr, "livellm: "+err.Error())
 		os.Exit(exitCode(err))
 	}

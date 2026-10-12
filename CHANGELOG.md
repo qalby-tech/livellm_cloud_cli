@@ -3,6 +3,23 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## Unreleased
+
+- `plan payg on|off [--limit DOLLARS]` turns pay as you go on or off, and
+  `--limit` sets the most it may cost a month (sent as `limitCents`; a key may
+  only lower it, and a LiveLLM that takes no payments has none). `plan
+  metered on|off` stays, the same command under its old name. On or off is
+  always sent with a limit: a LiveLLM from before the limit takes `--limit`
+  as nothing and keeps the switch as asked.
+- A refusal for billing says what to do next, by the API's code: pay as you
+  go off (`payg_off`: turn it on or choose a bigger plan on the console's
+  Billing page, or `plan payg on`), past its limit (`payg_limit`: raise it),
+  a card missing (`card_required`: a person adds one on the Billing page), a
+  payment overdue (`payment_overdue`: a person pays the open invoice there;
+  the link that pays it is never printed) and pay as you go not open to the
+  account (`payg_not_offered`, a 403: tell the user). A next step the API
+  sent comes first, as before.
+
 ## 0.8.0
 
 - Object storage: a database of the engine `s3` (S3 buckets, no backups).
