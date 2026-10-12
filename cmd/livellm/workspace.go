@@ -444,11 +444,14 @@ func cmdPlan(args []string) error {
 // it) or off (refuse what doesn't fit), and with --limit sets the account's
 // pay-as-you-go limit, in dollars a month, in the same call. on or off is
 // always sent: an API from before the limit reads a body without it as off.
-// A key may only lower the limit; the API says so when it refuses.
+// Only a key with the billing permission changes billing from here (a
+// `livellm login` sign-in is an agent, and agents never do), and a key may
+// only lower the limit: a person raises it on the console's Billing page. The
+// API says so when it refuses.
 func planPayg(name string, args []string) error {
 	if len(args) == 0 || (args[0] != "on" && args[0] != "off") {
 		return fmt.Errorf("plan %s on (go past the plan and pay for what is above it) or off (refuse what doesn't fit), "+
-			"with --limit DOLLARS for the most pay as you go may cost a month", name)
+			"with --limit DOLLARS to lower the most pay as you go may cost a month", name)
 	}
 	fs := flag.NewFlagSet("plan "+name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -499,12 +502,15 @@ func dollarsToCents(s string) (int64, error) {
 
 // billingNexts are what to do after a billing refusal, by the API's code.
 // Only a person adds a card, pays an invoice or raises the pay-as-you-go
-// limit, and pay as you go costs money: a key or an agent asks the user.
+// limit, and pay as you go costs money: a key or an agent asks the user. No
+// credential of the CLI's can raise the limit (a key gets 403 people_only, a
+// sign-in, an agent, is refused billing altogether), so payg_limit names
+// none.
 var billingNexts = map[string]string{
-	"payg_off": "ask the user first: they turn on pay as you go, or choose a bigger plan, on the console's Billing page " +
-		"(or run: livellm plan payg on; a key needs the billing permission); or remove something",
-	"payg_limit": "this is past the account's pay-as-you-go limit: ask the user to raise it on the console's Billing page " +
-		"(or run: livellm plan payg on --limit DOLLARS; a key can only lower it); or remove something",
+	"payg_off": "ask the user first: they turn on pay as you go, or choose a bigger plan, on the console's Billing page; " +
+		"or remove something",
+	"payg_limit": "this is past the account's pay-as-you-go limit: ask the user to raise it on the console's Billing page; " +
+		"only a person can; or remove something",
 	"card_required": "a card is needed first: ask the user to add one on the console's Billing page (Add a card), then try " +
 		"again; only a person adds a card",
 	"payment_overdue": "a payment failed, and nothing can be added until it is paid (what runs keeps running): ask the user " +
@@ -513,17 +519,30 @@ var billingNexts = map[string]string{
 		"for an account, and until then only what fits the plan can be added",
 }
 
+// paygOnByKey is payg_off's other way, offered with a key alone: a key with
+// the billing permission may turn pay as you go on itself once the user
+// agrees, while a sign-in (`livellm login`) is an agent, and agents never
+// change billing.
+const paygOnByKey = "ask the user first: they turn on pay as you go, or choose a bigger plan, on the console's Billing page " +
+	"(or, once they agree, run: livellm plan payg on; this key needs the billing permission); or remove something"
+
 // billingNext gives a billing refusal its next step, unless the API named
 // one. The code decides; a refusal without one of these codes (an older API's
-// full plan among them) comes back as it was.
+// full plan among them) comes back as it was. payg_off's words depend on the
+// credential, the way networkNext's do.
 func billingNext(err error) error {
 	var p *problem
 	if !asProblem(err, &p) || p.Next != "" {
 		return err
 	}
-	if next, ok := billingNexts[p.Code]; ok {
-		p.Next = next
+	next, ok := billingNexts[p.Code]
+	if !ok {
+		return err
 	}
+	if p.Code == "payg_off" && strings.TrimSpace(os.Getenv("LIVELLM_API_KEY")) != "" {
+		next = paygOnByKey
+	}
+	p.Next = next
 	return err
 }
 

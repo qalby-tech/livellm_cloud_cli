@@ -97,8 +97,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm plan catalog                       the plans there are
   livellm plan set PLAN                      change it (a key needs the billing permission)
   livellm plan payg on|off [--limit DOLLARS] pay as you go: go past the plan and pay for what is
-                                             above it, up to DOLLARS a month (a key may only lower
-                                             the limit; plan metered is the same); on an
+                                             above it, up to DOLLARS a month; only a key with the
+                                             billing permission changes it here, and --limit only
+                                             lowers the limit (a person raises it on the console's
+                                             Billing page; plan metered is the same); on an
                                              organization's workspace its owners change the plan
                                              in the console (plan set and plan payg answer 409)
   livellm invoices [ID]                      monthly invoices, or one

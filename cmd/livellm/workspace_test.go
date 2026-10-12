@@ -685,11 +685,13 @@ func TestPlanOnAnOrganizationsWorkspace(t *testing.T) {
 }
 
 // A billing refusal gets the CLI's next step by its code, after the API's own
-// words: turn on pay as you go or choose a bigger plan, raise the limit, add a
-// card, pay the open invoice (never its link), or, for pay as you go not open
-// to the account, tell the user. A next step the API sent wins, a code the CLI
-// doesn't know and an older API's uncoded full plan stay as they came, and
-// each is something the user acts on (exit 2).
+// words: turn on pay as you go or choose a bigger plan (with a key, or run
+// plan payg on once the user agrees), the user raises the limit (no
+// credential of the CLI's can), add a card, pay the open invoice (never its
+// link), or, for pay as you go not open to the account, tell the user. A next
+// step the API sent wins, a code the CLI doesn't know and an older API's
+// uncoded full plan stay as they came, and each is something the user acts on
+// (exit 2).
 func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 	for _, c := range []struct {
 		status    int
@@ -698,9 +700,10 @@ func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 		mentioned []string
 	}{
 		{402, `{"error":"Starter includes no resources. Turn on pay as you go, or choose Pro, on the Billing page.","code":"payg_off"}`,
-			billingNexts["payg_off"], []string{"ask the user first", "turn on pay as you go", "Billing page", "livellm plan payg on"}},
+			paygOnByKey, []string{"ask the user first", "turn on pay as you go", "Billing page", "once they agree, run: livellm plan payg on",
+				"this key needs the billing permission"}},
 		{402, `{"error":"This would bring pay as you go to $140 a month, past your $100 limit. Raise it on the Billing page.","code":"payg_limit"}`,
-			billingNexts["payg_limit"], []string{"raise it on the console's Billing page", "--limit DOLLARS", "a key can only lower it"}},
+			billingNexts["payg_limit"], []string{"raise it on the console's Billing page", "only a person can", "or remove something"}},
 		{402, `{"error":"Add a card first: Billing → Add a card.","code":"card_required","checkout":"card"}`,
 			billingNexts["card_required"], []string{"add one on the console's Billing page", "only a person adds a card"}},
 		{402, `{"error":"A payment failed on 3 November. Pay the open invoice to add resources.","code":"payment_overdue","payUrl":"https://invoice.example/i/secret"}`,
@@ -748,11 +751,42 @@ func TestBillingRefusalsSayWhatToDo(t *testing.T) {
 			t.Errorf("%s: exit %d, want 2", c.body, exitCode(err))
 		}
 	}
+	if strings.Contains(billingNexts["payg_limit"], "livellm") || strings.Contains(billingNexts["payg_limit"], "--limit") {
+		t.Errorf("payg_limit offers a command, which no key or sign-in can use to raise the limit: %q", billingNexts["payg_limit"])
+	}
 	help := strings.Join(strings.Fields(usage), " ")
-	for _, want := range []string{"livellm plan payg on|off [--limit DOLLARS]", "a key may only lower the limit", "plan metered is the same"} {
+	for _, want := range []string{"livellm plan payg on|off [--limit DOLLARS]", "--limit only lowers the limit",
+		"a person raises it on the console's Billing page", "plan metered is the same"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("the help doesn't say %q", want)
 		}
+	}
+}
+
+// A sign-in (livellm login) is an agent, and agents never change billing: its
+// payg_off step sends the user to the console and offers no command; a key's
+// offers plan payg on. payg_limit offers no command to either.
+func TestBillingNextByCredential(t *testing.T) {
+	t.Setenv("LIVELLM_API_KEY", "")
+	off := &problem{Status: 402, Msg: "Starter includes no resources.", Code: "payg_off"}
+	if billingNext(off); off.Next != billingNexts["payg_off"] || strings.Contains(off.Next, "livellm") {
+		t.Errorf("sign-in, payg_off: %q", off.Next)
+	}
+	if !strings.Contains(off.Next, "turn on pay as you go, or choose a bigger plan, on the console's Billing page") {
+		t.Errorf("sign-in, payg_off doesn't name the Billing page: %q", off.Next)
+	}
+	limit := &problem{Status: 402, Msg: "past your $25 limit", Code: "payg_limit"}
+	if billingNext(limit); limit.Next != billingNexts["payg_limit"] {
+		t.Errorf("sign-in, payg_limit: %q", limit.Next)
+	}
+	t.Setenv("LIVELLM_API_KEY", " llc_test ")
+	off = &problem{Status: 402, Msg: "Starter includes no resources.", Code: "payg_off"}
+	if billingNext(off); off.Next != paygOnByKey {
+		t.Errorf("key, payg_off: %q", off.Next)
+	}
+	limit = &problem{Status: 402, Msg: "past your $25 limit", Code: "payg_limit"}
+	if billingNext(limit); limit.Next != billingNexts["payg_limit"] {
+		t.Errorf("key, payg_limit: %q", limit.Next)
 	}
 }
 

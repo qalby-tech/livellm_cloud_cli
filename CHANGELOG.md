@@ -6,15 +6,19 @@ platform and attaches them to the GitHub release.
 ## Unreleased
 
 - `plan payg on|off [--limit DOLLARS]` turns pay as you go on or off, and
-  `--limit` sets the most it may cost a month (sent as `limitCents`; a key may
-  only lower it, and a LiveLLM that takes no payments has none). `plan
-  metered on|off` stays, the same command under its old name. On or off is
-  always sent with a limit: a LiveLLM from before the limit takes `--limit`
-  as nothing and keeps the switch as asked.
+  `--limit` lowers the most it may cost a month (sent as `limitCents`; a
+  LiveLLM that takes no payments has none). Only a key with the billing
+  permission changes billing from the command line (a `livellm login`
+  sign-in is an agent, which never does), and a key can't raise the limit: a
+  person raises it on the console's Billing page. `plan metered on|off`
+  stays, the same command under its old name. On or off is always sent with
+  a limit: a LiveLLM from before the limit takes `--limit` as nothing and
+  keeps the switch as asked.
 - A refusal for billing says what to do next, by the API's code: pay as you
-  go off (`payg_off`: turn it on or choose a bigger plan on the console's
-  Billing page, or `plan payg on`), past its limit (`payg_limit`: raise it),
-  a card missing (`card_required`: a person adds one on the Billing page), a
+  go off (`payg_off`: the user turns it on or chooses a bigger plan on the
+  console's Billing page, or, through a key, `plan payg on` once they agree),
+  past its limit (`payg_limit`: the user raises it there; no key or sign-in
+  can), a card missing (`card_required`: a person adds one on the Billing page), a
   payment overdue (`payment_overdue`: a person pays the open invoice there;
   the link that pays it is never printed) and pay as you go not open to the
   account (`payg_not_offered`, a 403: tell the user). A next step the API
