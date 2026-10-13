@@ -3,7 +3,7 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
-## Unreleased
+## 0.9.0
 
 - `plan payg on|off [--limit DOLLARS]` turns pay as you go on or off, and
   `--limit` lowers the most it may cost a month (sent as `limitCents`; a
