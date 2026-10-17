@@ -3,6 +3,19 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.10.0
+
+- `create storage --servers 1|3` makes an object storage (`"engine": "s3"`)
+  of 1 server (the default) or 3, one on each of 3 hosts, that keep working
+  if one host is lost; it is sent as `instances`. It needs 3 hosts the
+  workspace can use (the API refuses it on fewer, and says to make it with 1
+  server), counts 3 times the cpu and memory and 1.5 times the storage, and
+  is fixed once made. `--servers` on another kind, on a database that isn't
+  an object storage, or disagreeing with the file's `instances`, is refused
+  before anything is sent. Needs LiveLLM API 0.72 or newer.
+- `ls` shows an object storage of 3 servers' `servers: {desired, ready}`;
+  `status` already carries it as the API sends it.
+
 ## 0.9.0
 
 - `plan payg on|off [--limit DOLLARS]` turns pay as you go on or off, and

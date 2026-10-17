@@ -66,6 +66,14 @@ type resource struct {
 	// waits for it.
 	Databases []map[string]any `json:"databases,omitempty"`
 	UsedBy    []string         `json:"usedBy,omitempty"`
+	// Servers: an object storage of 3 servers, how many it runs and how
+	// many are ready (it keeps serving with one down).
+	Servers *serverCount `json:"servers,omitempty"`
+}
+
+type serverCount struct {
+	Desired int `json:"desired"`
+	Ready   int `json:"ready"`
 }
 
 // statusWarning carries why the live state is missing, when it is: a resource
@@ -105,12 +113,13 @@ func resources() ([]resource, error) {
 	}
 	var live struct {
 		Workloads []struct {
-			ID        string   `json:"id"`
-			Phase     string   `json:"phase"`
-			Ready     bool     `json:"ready"`
-			ExpiresAt string   `json:"expiresAt"`
-			SSH       string   `json:"ssh"`
-			UsedBy    []string `json:"usedBy"`
+			ID        string       `json:"id"`
+			Phase     string       `json:"phase"`
+			Ready     bool         `json:"ready"`
+			ExpiresAt string       `json:"expiresAt"`
+			SSH       string       `json:"ssh"`
+			UsedBy    []string     `json:"usedBy"`
+			Servers   *serverCount `json:"servers"`
 			Endpoints []struct {
 				URL  string `json:"url"`
 				Addr string `json:"addr"`
@@ -154,7 +163,7 @@ func resources() ([]resource, error) {
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]
 			r.State, r.Ready, r.StopsAt = strings.ToLower(l.Phase), l.Ready, l.ExpiresAt
-			r.UsedBy = l.UsedBy
+			r.UsedBy, r.Servers = l.UsedBy, l.Servers
 			for _, e := range l.Endpoints {
 				switch {
 				case e.URL != "":
@@ -503,6 +512,7 @@ func cmdCreate(args []string) error {
 	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
+	servers := fs.String("servers", "", `an object storage ("engine": "s3"): 1 server (the default) or 3, one on each of 3 hosts; fixed once made`)
 	reach := addReachFlag(fs)
 	var links repeated
 	fs.Var(&links, "database", "a machine or a Desktop App: let it reach this database (repeat it for more; nothing goes into the machine)")
@@ -540,6 +550,10 @@ func cmdCreate(args []string) error {
 	}
 	if *join != "" && kind != "apps" {
 		return fmt.Errorf("--join goes with create apps")
+	}
+	nServers, err := serversFlag(kind, *servers)
+	if err != nil {
+		return err
 	}
 	if kind != "browser" && (*newID != "" || *locale != "" || *timezone != "" || *profile != "" || *profilePw != "") {
 		return fmt.Errorf("--id, --locale, --timezone and --profile go with create browser")
@@ -645,6 +659,9 @@ func cmdCreate(args []string) error {
 	}
 	if kind == "storage" {
 		if err := refuseDatabaseReach(body); err != nil {
+			return err
+		}
+		if err := withServers(body, nServers); err != nil {
 			return err
 		}
 	}
@@ -1267,4 +1284,41 @@ func hostname() string {
 		return "a terminal"
 	}
 	return h
+}
+
+// serversFlag reads --servers: an object storage's servers, 1 or 3 (0 when
+// it isn't given). It goes with create storage only.
+func serversFlag(kind, v string) (int, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, nil
+	}
+	if kind != "storage" {
+		return 0, fmt.Errorf(`--servers goes with create storage, for an object storage ("engine": "s3")`)
+	}
+	switch v {
+	case "1":
+		return 1, nil
+	case "3":
+		return 3, nil
+	}
+	return 0, fmt.Errorf("--servers is 1 or 3 (3: one server on each of 3 hosts, which keeps working if one host is lost)")
+}
+
+// withServers puts --servers into an object storage's settings as its
+// instances. It is for engine s3 alone, and must agree with the file.
+func withServers(body map[string]any, n int) error {
+	if n == 0 {
+		return nil
+	}
+	if e, _ := body["engine"].(string); e != "s3" {
+		return fmt.Errorf(`--servers is for an object storage ("engine": "s3"); a PostgreSQL database takes "instances" in its file`)
+	}
+	if had, ok := body["instances"]; ok && had != nil {
+		if f, isNum := had.(float64); !isNum || int(f) != n {
+			return fmt.Errorf("the settings say instances %v and --servers says %d; pass one", had, n)
+		}
+	}
+	body["instances"] = n
+	return nil
 }

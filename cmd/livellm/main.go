@@ -19,7 +19,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm logout                             end this sign-in
   livellm whoami                             workspace, plan and usage
 
-  livellm ls [--type TYPE]                   everything, with its state (a database: its engine)
+  livellm ls [--type TYPE]                   everything, with its state (a database: its engine;
+                                             an object storage of 3 servers: how many are ready)
   livellm status [ID]                        how things are running right now
   livellm wait ID [--timeout 15m]            until it is ready (exits non-zero if it isn't)
   livellm install ID                         a new machine's way to its first boot
@@ -46,6 +47,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm create TYPE -f FILE                create a resource from a JSON file
                                              a database (storage): "engine": "postgres", "redis" or
                                              "s3" (object storage: S3 buckets, no backups)
+          [--servers 1|3]                    an object storage: 1 server (the default), or 3, one on
+                                             each of 3 hosts, that keep working if one host is lost
+                                             (needs 3 hosts; 3x the cpu and memory, 1.5x the disk;
+                                             fixed once made: make a new one to change it)
                                              where it runs: "placement": {"strategy": "region", "region": "<r>"}
                                              or {"strategy": "host", "host": "<id>"} (ids from livellm hosts);
                                              set ID -f with {"<block>": {"placement": null}}: automatic again

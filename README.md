@@ -278,6 +278,19 @@ The allowlist covers both addresses; set one whenever either is on.
 It keeps one copy of your files and has no backups: deleting a file, a bucket
 or the object storage is final (`livellm backups files` says so).
 
+It runs as 1 server (the default) or 3: `--servers 3` makes 3 servers, one on
+each of 3 hosts, that keep reading and writing when one host is lost. It
+needs 3 hosts the workspace can use (on fewer, the create is refused: make it
+with 1 server), can't be pinned to one host, and counts 3 times its cpu and
+memory and 1.5 times its storage toward the plan. Its servers are fixed when
+it is made: to change them, make a new object storage and copy the files
+over. `livellm ls` and `livellm status files` show how many of its servers are
+ready (`servers: {desired, ready}`); it keeps serving with one down.
+
+```sh
+livellm create storage -f files.json --servers 3     # the same as "instances": 3 in the file
+```
+
 Backups work the same way for machines and databases:
 
 ```sh
