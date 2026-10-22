@@ -532,6 +532,9 @@ func cmdCreate(args []string) error {
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
 	}
+	if err := coresLeftovers(cores); err != nil {
+		return err
+	}
 	// A database has no setting: only what links it reaches it. Nothing
 	// ('') is what it has anyway, so it isn't sent.
 	if kind == "storage" && reach.set {
@@ -1160,6 +1163,9 @@ func cmdSet(args []string) error {
 	file := fs.String("f", "", "a JSON file with the settings that change")
 	cores := addCoreFlags(fs)
 	_ = fs.Parse(rest)
+	if err := coresLeftovers(cores); err != nil {
+		return err
+	}
 	changes, _, err := cores.changes()
 	if err != nil {
 		return err
@@ -1198,10 +1204,12 @@ func cmdSet(args []string) error {
 		if vm == nil {
 			vm = map[string]any{}
 		}
-		dedicated, _ := block(w, "vm")["dedicatedCores"].(bool)
+		stored := block(w, "vm")
+		dedicated, _ := stored["dedicatedCores"].(bool)
 		if err := withCores(kind, vm, cores, dedicated); err != nil {
 			return err
 		}
+		givesUpMixed(cores, vm, stored)
 		patch["vm"] = vm
 	}
 	if err := patchWorkload(id, patch); err != nil {

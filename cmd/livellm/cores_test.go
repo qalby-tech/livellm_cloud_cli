@@ -93,6 +93,8 @@ func TestCreateMachineCores(t *testing.T) {
 		"on a browser by id":        {[]string{"browser", "--id", "b", "--mixed-speeds"}, "--mixed-speeds goes with a machine"},
 		"on several apps":           {[]string{"apps", "-f", box, "--core-speed", "5700"}, "--core-speed goes with a machine"},
 		"on a database, first flag": {[]string{"storage", "-f", box, "--mixed-speeds", "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
+		// flag reads `--dedicated-cores false` as true and stops at "false"
+		"a yes-or-no after a space": {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "false", "--core-speed", "5700"}, `"false" is left over: a yes-or-no flag takes its value after =`},
 	} {
 		f := newFakeAPI(t)
 		err := cmdCreate(c.args)
@@ -114,6 +116,7 @@ func TestSetMachineCores(t *testing.T) {
 	const ws = `{"spec":{"workloads":[
 		{"id":"box","type":"vm-ubuntu","vm":{"cpus":4}},
 		{"id":"fast","type":"vm-windows","vm":{"cpus":8,"dedicatedCores":true,"coreSpeed":5700}},
+		{"id":"floats","type":"vm-ubuntu","vm":{"cpus":20,"dedicatedCores":true,"mixedSpeeds":true}},
 		{"id":"web","type":"pod","pod":{"image":"nginx"}}]}}`
 
 	for _, c := range []struct {
@@ -133,6 +136,16 @@ func TestSetMachineCores(t *testing.T) {
 			map[string]any{"vm": map[string]any{"coreSpeed": float64(0), "mixedSpeeds": false}}},
 		{"shared again", []string{"fast", "--dedicated-cores=false"},
 			map[string]any{"vm": map[string]any{"dedicatedCores": false}}},
+		// A new speed on a machine kept on mixed speeds gives them up, as the
+		// console's does; with --mixed-speeds, or more cores alone, they stay.
+		{"a speed gives up mixed speeds", []string{"floats", "--core-speed", "4.4GHz"},
+			map[string]any{"vm": map[string]any{"coreSpeed": float64(4400), "mixedSpeeds": false}}},
+		{"any one speed gives them up too", []string{"floats", "--core-speed", "any"},
+			map[string]any{"vm": map[string]any{"coreSpeed": float64(0), "mixedSpeeds": false}}},
+		{"a speed, mixed speeds kept", []string{"floats", "--core-speed", "4.4GHz", "--mixed-speeds"},
+			map[string]any{"vm": map[string]any{"coreSpeed": float64(4400), "mixedSpeeds": true}}},
+		{"more cores keep mixed speeds", []string{"floats", "--cores", "24"},
+			map[string]any{"vm": map[string]any{"cpus": float64(24)}}},
 		{"a file alone: as written", []string{"box", "-f", more},
 			map[string]any{"vm": map[string]any{"cpus": float64(8), "memory": "16Gi"}, "reachableFrom": []any{"web"}}},
 	} {
@@ -163,6 +176,7 @@ func TestSetMachineCores(t *testing.T) {
 		"a speed on a shared machine":      {[]string{"box", "--core-speed", "5.7GHz"}, "--core-speed goes with dedicated cores"},
 		"on an app":                        {[]string{"web", "--cores", "2"}, "--cores goes with a machine"},
 		"nothing":                          {[]string{"box"}, "pass the changes with -f"},
+		"a yes-or-no after a space":        {[]string{"fast", "--dedicated-cores", "false", "--cores", "2"}, `"false" is left over`},
 		"no such machine":                  {[]string{"gone", "--dedicated-cores"}, `there is nothing called "gone" here`},
 	} {
 		f := newFakeAPI(t)

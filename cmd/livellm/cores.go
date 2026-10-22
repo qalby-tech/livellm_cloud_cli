@@ -129,6 +129,35 @@ func withCores(kind string, body map[string]any, c *coreFlags, dedicated bool) e
 	return nil
 }
 
+// coresLeftovers refuses what is left after the flags once a cores flag was
+// given: `--dedicated-cores false` turns them on and leaves "false", and
+// every flag after it, unread.
+func coresLeftovers(c *coreFlags) error {
+	if c.fs.NArg() == 0 {
+		return nil
+	}
+	given := flagsGiven(c.fs)
+	for _, n := range coreFlagNames {
+		if given[n] {
+			return fmt.Errorf("%q is left over: a yes-or-no flag takes its value after =, e.g. --dedicated-cores=false or --mixed-speeds=false", c.fs.Arg(0))
+		}
+	}
+	return nil
+}
+
+// givesUpMixed is a set's new ask for a speed on a machine kept on mixed
+// speeds (stored: its vm block as stored): it gives them up, as the
+// console's does, unless --mixed-speeds or the file says otherwise. Kept,
+// its cores would go on running at any speed, whatever the clock asked.
+func givesUpMixed(c *coreFlags, vm, stored map[string]any) {
+	if _, said := vm["mixedSpeeds"]; said || !flagsGiven(c.fs)["core-speed"] {
+		return
+	}
+	if kept, _ := stored["mixedSpeeds"].(bool); kept {
+		vm["mixedSpeeds"] = false
+	}
+}
+
 // coresOnMachines refuses the cores flags, and a value they can't take, on
 // anything but a machine, before anything is sent.
 func coresOnMachines(kind string, c *coreFlags) error {
