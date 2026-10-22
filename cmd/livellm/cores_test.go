@@ -215,6 +215,11 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		// Nothing of that speed is free: only the count at mixed speeds.
 		{409, `{"error":"Only 0 cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":8,"fit":0,"speedMHz":5700}`,
 			"Only 0 cores", "continue with mixed speeds (8 cores): run it again with --mixed-speeds", true},
+		// One core: one core, as the console says it.
+		{409, `{"error":"Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":1,"speedMHz":5700}`,
+			"Only 1 core", "use 1 core: run it again with --cores 1; or continue with mixed speeds (4 cores): run it again with --mixed-speeds", false},
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":1,"fit":0}`,
+			msgSpeedsMixed, "continue with mixed speeds (1 core): run it again with --mixed-speeds", true},
 		// The same in the API's words for none free, and with fit left out:
 		// never "use 0 cores".
 		{409, `{"error":"No cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":8,"fit":0,"speedMHz":5700}`,

@@ -213,18 +213,26 @@ func coresNext(err error, machine string) error {
 	}
 	mixed := "continue with mixed speeds: run it again with --mixed-speeds"
 	if c.Cores > 0 {
-		mixed = fmt.Sprintf("continue with mixed speeds (%d cores): run it again with --mixed-speeds", c.Cores)
+		mixed = fmt.Sprintf("continue with mixed speeds (%s): run it again with --mixed-speeds", coresWord(c.Cores))
 	}
 	switch p.Code {
 	case "core_speed_short", "core_speeds_mixed":
 		p.Next = mixed
 		if c.Fit > 0 {
-			p.Next = fmt.Sprintf("use %d cores: run it again with --cores %d; or %s", c.Fit, c.Fit, mixed)
+			p.Next = fmt.Sprintf("use %s: run it again with --cores %d; or %s", coresWord(c.Fit), c.Fit, mixed)
 		}
 	case "core_speed_unknown":
 		p.Next = "livellm cores lists the speeds there are; or run it again with --core-speed any (any one speed)"
 	}
 	return err
+}
+
+// coresWord is a count of cores as the console words it: "1 core", "6 cores".
+func coresWord(n int) string {
+	if n == 1 {
+		return "1 core"
+	}
+	return fmt.Sprintf("%d cores", n)
 }
 
 // cmdCores prints the clock speeds a machine's dedicated cores may ask for
