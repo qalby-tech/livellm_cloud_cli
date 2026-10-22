@@ -65,7 +65,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
           [--core-speed 5.7GHz|5700|any]     reserved for it on its server (left out: shared), all of
           [--mixed-speeds]                   one clock speed (livellm cores lists them; --core-speed
                                              asks for one) unless --mixed-speeds keeps the count when
-                                             no one speed has it free; each in place of the file's
+                                             no one speed has it free; each in place of the file's, but
+                                             --cores must agree with its "cpus" (else nothing is made)
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
@@ -85,10 +86,11 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm start ID                           start a stopped one again
   livellm set ID -f FILE                     change some settings (only what the file holds)
           [--cores N] [--dedicated-cores[=false]] [--core-speed S] [--mixed-speeds[=false]]
-                                             a machine's cores, as with create (-f optional); its cores
-                                             (--cores alone too), dedicated cores and their speed take
-                                             effect at its next restart; a new --core-speed gives up
-                                             mixed speeds kept before
+                                             a machine's cores, as with create (-f optional; --cores
+                                             must agree with the file's "vm" "cpus"); its cores (--cores
+                                             alone too), dedicated cores and their speed take effect at
+                                             its next restart; a new --core-speed gives up mixed speeds
+                                             kept before
   livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again

@@ -33,7 +33,7 @@ type coreFlags struct {
 func addCoreFlags(fs *flag.FlagSet) *coreFlags {
 	return &coreFlags{
 		fs:        fs,
-		cores:     fs.Int("cores", 0, "a machine: how many cores (sent as cpus, in place of the file's)"),
+		cores:     fs.Int("cores", 0, "a machine: how many cores (sent as cpus; a file's cpus must agree)"),
 		dedicated: fs.Bool("dedicated-cores", false, "a machine: every core reserved for it on its server (=false: shared again)"),
 		speed:     fs.String("core-speed", "", "a machine with dedicated cores: their clock, 5.7GHz or 5700 (MHz); any: any one speed"),
 		mixed:     fs.Bool("mixed-speeds", false, "a machine with dedicated cores: keep the count, at mixed core speeds"),
