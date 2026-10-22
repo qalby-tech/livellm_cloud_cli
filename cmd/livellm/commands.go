@@ -702,8 +702,9 @@ func cmdCreate(args []string) error {
 		return fmt.Errorf("the settings need an id")
 	}
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
+		// The API names the machine by the id it made, trimmed.
 		id, _ := body["id"].(string)
-		return coresNext(err, id)
+		return coresNext(err, strings.TrimSpace(id))
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
 }

@@ -284,6 +284,16 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 		t.Errorf("create: %v", err)
 	}
 
+	// The API trims the id it makes and names the machine so: still this one.
+	spaced := filepath.Join(dir, "spaced.json")
+	_ = os.WriteFile(spaced, []byte(`{"id":" box ","cpus":8}`), 0o600)
+	f = newFakeAPI(t)
+	f.answers["POST /v1/workloads/vm-ubuntu"] = answerStatus(409, short)
+	err = cmdCreate([]string{"vm-ubuntu", "-f", spaced, "--dedicated-cores", "--core-speed", "5.7GHz"})
+	if err == nil || !strings.Contains(err.Error(), "use 6 cores: run it again with --cores 6") {
+		t.Errorf("create, id with spaces: %v", err)
+	}
+
 	f = newFakeAPI(t)
 	f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":20}}]}}`)
 	f.answers["PATCH /v1/workloads/box"] = answerStatus(409, `{"error":"`+msgSpeedsMixed+`","code":"core_speeds_mixed","workload":"box","cores":20,"fit":16}`)
