@@ -215,6 +215,12 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		// Nothing of that speed is free: only the count at mixed speeds.
 		{409, `{"error":"Only 0 cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":8,"fit":0,"speedMHz":5700}`,
 			"Only 0 cores", "continue with mixed speeds (8 cores): run it again with --mixed-speeds", true},
+		// The same in the API's words for none free, and with fit left out:
+		// never "use 0 cores".
+		{409, `{"error":"No cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":8,"fit":0,"speedMHz":5700}`,
+			"No cores at 5.7 GHz", "continue with mixed speeds (8 cores): run it again with --mixed-speeds", true},
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":20}`,
+			msgSpeedsMixed, "continue with mixed speeds (20 cores): run it again with --mixed-speeds", true},
 		{422, `{"error":"` + msgSpeedUnknown + `","code":"core_speed_unknown","workload":"box","cores":8,"fit":0,"speedMHz":3000}`,
 			msgSpeedUnknown, "livellm cores lists the speeds", true},
 		{409, `{"error":"` + msgServerFull + `","code":"server_full","workload":"box"}`, msgServerFull, "", true},
@@ -243,7 +249,7 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		if c.wantNext == "" && p.Next != "" || !strings.Contains(p.Next, c.wantNext) {
 			t.Errorf("%s: next %q, want %q", c.body, p.Next, c.wantNext)
 		}
-		if c.wantNoUse && strings.Contains(p.Next, "use ") {
+		if c.wantNoUse && (strings.Contains(p.Next, "use ") || strings.Contains(p.Next, "--cores 0")) {
 			t.Errorf("%s: offers cores that don't fit: %q", c.body, p.Next)
 		}
 		if exitCode(err) != map[int]int{422: 1, 409: 4}[c.status] {
