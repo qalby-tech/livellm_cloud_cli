@@ -337,7 +337,8 @@ speed are free the API says so in its words, and the error says what to run
 again: fewer cores (`--cores N`, the cores that fit) or `--mixed-speeds`, which
 keeps the count with cores that may run at different speeds. The flags go in
 place of the file's values; `set` takes them without a file too, and a
-machine's dedicated cores and their speed take effect at its next restart.
+machine's cores (`--cores` alone too), dedicated cores and their speed take
+effect at its next restart.
 On `set`, a new `--core-speed` gives up the mixed speeds a machine kept
 (`--mixed-speeds` with it keeps them). A yes-or-no flag takes its value after
 `=`: `--dedicated-cores=false` makes a machine's cores shared again.
