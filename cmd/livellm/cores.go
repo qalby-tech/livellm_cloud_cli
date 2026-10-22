@@ -151,7 +151,8 @@ func coresAgree(file string, had any, n int) error {
 		if f == float64(n) {
 			return nil
 		}
-		if f >= 0 && f == math.Trunc(f) {
+		// A count past any whole number of cores is said as the file says it.
+		if f >= 0 && f <= math.MaxInt32 && f == math.Trunc(f) {
 			says = coresWord(int(f))
 		}
 	}

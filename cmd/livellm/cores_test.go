@@ -39,6 +39,7 @@ func TestCreateMachineCores(t *testing.T) {
 	dedicated := write("dedicated.json", `{"id":"box","cpus":8,"dedicatedCores":true}`)
 	sized := write("sized.json", `{"id":"box","memory":"16Gi"}`)
 	one := write("one.json", `{"id":"box","cpus":1}`)
+	huge := write("huge.json", `{"id":"box","cpus":1e20}`)
 	worded := write("worded.json", `{"id":"box","cpus":"8"}`)
 
 	for _, c := range []struct {
@@ -100,6 +101,7 @@ func TestCreateMachineCores(t *testing.T) {
 		"cores the file disagrees with": {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--cores", "6"}, "box.json says 8 cores and --cores says 6: change one of them"},
 		"one core in the file":          {[]string{"vm-ubuntu", "-f", one, "--cores", "2"}, "one.json says 1 core and --cores says 2: change one of them"},
 		"cores in words in the file":    {[]string{"vm-ubuntu", "-f", worded, "--cores", "8"}, `worded.json says "cpus": "8" and --cores says 8: change one of them`},
+		"more cores than any count":     {[]string{"vm-ubuntu", "-f", huge, "--cores", "2"}, `huge.json says "cpus": 100000000000000000000 and --cores says 2: change one of them`},
 		"on an app":                     {[]string{"pod", "-f", box, "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
 		"on a Desktop App":              {[]string{"desktop", "-f", box, "--cores", "2"}, "--cores goes with a machine"},
 		"on a browser by id":            {[]string{"browser", "--id", "b", "--mixed-speeds"}, "--mixed-speeds goes with a machine"},
