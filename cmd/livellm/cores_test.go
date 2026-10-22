@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -243,7 +244,7 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
 	}
 	for _, c := range cases {
-		err := coresNext(problemFrom(c.status, []byte(c.body)), "box")
+		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { return 1 })
 		var p *problem
 		if !asProblem(err, &p) {
 			t.Fatalf("%s: not a problem: %v", c.body, err)
@@ -266,6 +267,59 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 	p := problemFrom(402, []byte(`{"error":"the plan is full","code":"payg_off","cores":{"used":2}}`))
 	if p.Msg != "the plan is full" || p.Cores != nil {
 		t.Errorf("%+v", p)
+	}
+
+	// Never fewer cores than the machine runs on: 1 that fits is not offered
+	// to a machine that needs 2, 2 are; the floor is asked only when cores
+	// fit.
+	one := `{"error":"Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":1,"speedMHz":5700}`
+	for _, c := range []struct {
+		body      string
+		floor     int
+		wantNext  string
+		wantNoUse bool
+		asked     bool
+	}{
+		{one, 2, "continue with mixed speeds (4 cores): run it again with --mixed-speeds", true, true},
+		{`{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":1}`, 2,
+			"continue with mixed speeds (4 cores): run it again with --mixed-speeds", true, true},
+		{one, 1, "use 1 core: run it again with --cores 1", false, true},
+		{`{"error":"Only 2 cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":2,"speedMHz":5700}`, 2,
+			"use 2 cores: run it again with --cores 2", false, true},
+		{`{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":0}`, 2,
+			"continue with mixed speeds (4 cores)", true, false},
+		{`{"error":"` + msgSpeedUnknown + `","code":"core_speed_unknown","workload":"box","cores":4,"fit":0,"speedMHz":3000}`, 2,
+			"livellm cores lists the speeds", true, false},
+	} {
+		asked := false
+		err := coresNext(problemFrom(409, []byte(c.body)), "box", func() int { asked = true; return c.floor })
+		var p *problem
+		if !asProblem(err, &p) || !strings.Contains(p.Next, c.wantNext) {
+			t.Errorf("floor %d, %s: next %v, want %q", c.floor, c.body, err, c.wantNext)
+			continue
+		}
+		if c.wantNoUse && (strings.Contains(p.Next, "use ") || strings.Contains(p.Next, "--cores ")) {
+			t.Errorf("floor %d, %s: offers fewer cores than the machine runs on: %q", c.floor, c.body, p.Next)
+		}
+		if asked != c.asked {
+			t.Errorf("floor %d, %s: floor asked %v", c.floor, c.body, asked)
+		}
+	}
+
+	for _, c := range []struct {
+		kind  string
+		vm    map[string]any
+		floor int
+	}{
+		{"vm-ubuntu", nil, 1}, {"vm-ubuntu", map[string]any{"cpus": float64(1)}, 1},
+		{"vm-ubuntu-desktop", nil, 2}, {"vm-windows", nil, 2},
+		{"vm-windows", map[string]any{"windowsEdition": "desktop"}, 2},
+		{"vm-windows", map[string]any{"windowsEdition": "server"}, 1},
+		{"", nil, 2},
+	} {
+		if got := coreFloor(c.kind, c.vm); got != c.floor {
+			t.Errorf("coreFloor(%q, %v) = %d, want %d", c.kind, c.vm, got, c.floor)
+		}
 	}
 }
 
@@ -310,6 +364,94 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 	err = cmdSet([]string{"box", "--dedicated-cores"})
 	if err == nil || !strings.Contains(err.Error(), msgSpeedsMixed) || strings.Contains(err.Error(), "run it again") {
 		t.Errorf("set, another machine: %v", err)
+	}
+}
+
+// A cores refusal never offers fewer cores than the machine runs on: a
+// desktop machine and Windows 11 need 2, a server and Windows Server 1. A
+// create knows the kind; a set reads it (once) when cores fit.
+func TestCoresRefusalsKeepTheMachinesFloor(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		_ = os.WriteFile(p, []byte(body), 0o600)
+		return p
+	}
+	one := `{"error":"Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":1,"speedMHz":5700}`
+	offer, mixed := "use 1 core: run it again with --cores 1", "continue with mixed speeds (4 cores): run it again with --mixed-speeds"
+
+	for _, c := range []struct {
+		kind, body string
+		offered    bool
+	}{
+		{"vm-ubuntu", `{"id":"box","cpus":4}`, true},
+		{"vm-ubuntu-desktop", `{"id":"box","cpus":4}`, false},
+		{"vm-windows", `{"id":"box","cpus":4}`, false},
+		{"vm-windows", `{"id":"box","cpus":4,"windowsEdition":"desktop"}`, false},
+		{"vm-windows", `{"id":"box","cpus":4,"windowsEdition":"server"}`, true},
+	} {
+		f := newFakeAPI(t)
+		f.answers["POST /v1/workloads/"+c.kind] = answerStatus(409, one)
+		err := cmdCreate([]string{c.kind, "-f", write("box.json", c.body), "--dedicated-cores", "--core-speed", "5.7GHz"})
+		if err == nil || !strings.Contains(err.Error(), "Only 1 core at 5.7 GHz") || !strings.Contains(err.Error(), mixed) ||
+			strings.Contains(err.Error(), offer) == !c.offered || exitCode(err) != 4 {
+			t.Errorf("create %s %s: %v", c.kind, c.body, err)
+		}
+	}
+
+	ws := `{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":4}},` +
+		`{"id":"desk","type":"vm-ubuntu-desktop","vm":{"cpus":4}},` +
+		`{"id":"win","type":"vm-windows","vm":{"cpus":4,"windowsEdition":"desktop"}},` +
+		`{"id":"winsrv","type":"vm-windows","vm":{"cpus":4,"windowsEdition":"server"}}]}}`
+	file := write("set.json", `{"vm":{"dedicatedCores":true}}`)
+	reads := func(f *fakeAPI) (n int) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, s := range f.seen {
+			if s.method == "GET" && s.path == "/v1/workspace" {
+				n++
+			}
+		}
+		return n
+	}
+	for _, c := range []struct {
+		name      string
+		args      []string
+		workspace func(http.ResponseWriter, *http.Request, []byte)
+		fit       int
+		offered   bool
+		reads     int
+	}{
+		// A file alone: the kind is read after the refusal.
+		{"a file, a server", []string{"box", "-f", file}, answerJSON(ws), 1, true, 1},
+		{"a file, a desktop machine", []string{"desk", "-f", file}, answerJSON(ws), 1, false, 1},
+		{"a file, Windows 11", []string{"win", "-f", file}, answerJSON(ws), 1, false, 1},
+		{"a file, Windows Server", []string{"winsrv", "-f", file}, answerJSON(ws), 1, true, 1},
+		// Unread: the most any machine needs, and the refusal as it came.
+		{"a file, the machine unread", []string{"box", "-f", file}, answerStatus(500, `{"error":"down"}`), 1, false, 1},
+		// None fit: nothing to read.
+		{"a file, none fit", []string{"desk", "-f", file}, answerJSON(ws), 0, false, 0},
+		// The flags read the machine before the set: not again.
+		{"flags, a desktop machine", []string{"desk", "--dedicated-cores"}, answerJSON(ws), 1, false, 1},
+		{"flags, a server", []string{"box", "--dedicated-cores"}, answerJSON(ws), 1, true, 1},
+	} {
+		id := c.args[0]
+		words := fmt.Sprintf("Only %d cores at 5.7 GHz are available. Continue with mixed core speeds?", c.fit)
+		if c.fit == 1 {
+			words = "Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?"
+		}
+		f := newFakeAPI(t)
+		f.answers["GET /v1/workspace"] = c.workspace
+		f.answers["PATCH /v1/workloads/"+id] = answerStatus(409, fmt.Sprintf(
+			`{"error":%q,"code":"core_speed_short","workload":%q,"cores":4,"fit":%d,"speedMHz":5700}`, words, id, c.fit))
+		err := cmdSet(c.args)
+		if err == nil || !strings.Contains(err.Error(), words) || !strings.Contains(err.Error(), mixed) ||
+			strings.Contains(err.Error(), "--cores ") != c.offered || exitCode(err) != 4 {
+			t.Errorf("set %s: %v", c.name, err)
+		}
+		if n := reads(f); n != c.reads {
+			t.Errorf("set %s: read the workspace %d times, want %d", c.name, n, c.reads)
+		}
 	}
 }
 

@@ -704,7 +704,7 @@ func cmdCreate(args []string) error {
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
 		// The API names the machine by the id it made, trimmed.
 		id, _ := body["id"].(string)
-		return coresNext(err, strings.TrimSpace(id))
+		return coresNext(err, strings.TrimSpace(id), func() int { return coreFloor(kind, body) })
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
 }
@@ -1190,11 +1190,13 @@ func cmdSet(args []string) error {
 	}
 	// The cores flags go into the machine's own block, beside what the file
 	// holds there, in place of its values.
+	var w map[string]any
 	if len(changes) > 0 {
-		w, err := findWorkload(id)
+		found, err := findWorkload(id)
 		if err != nil {
 			return err
 		}
+		w = found
 		kind, _ := w["type"].(string)
 		if err := coresOnMachines(kind, cores); err != nil {
 			return err
@@ -1215,7 +1217,15 @@ func cmdSet(args []string) error {
 		patch["vm"] = vm
 	}
 	if err := patchWorkload(id, patch); err != nil {
-		return coresNext(err, id)
+		return coresNext(err, id, func() int {
+			// A file alone: the machine's kind (fixed when it was made) is
+			// read only now; unread, the most any machine needs.
+			if w == nil {
+				w, _ = findWorkload(id)
+			}
+			kind, _ := w["type"].(string)
+			return coreFloor(kind, block(w, "vm"))
+		})
 	}
 	restartNote(cores, id)
 	return print(map[string]any{"changed": id})

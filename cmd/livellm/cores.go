@@ -198,11 +198,14 @@ type coresRefusal struct {
 
 // coresNext gives a cores refusal of a create or a set what to run again,
 // unless the API named a next step: the cores that fit ("Use N cores"), or
-// the count kept at mixed speeds ("Continue with mixed speeds"). A server
-// with no room for the machine (server_full) has nothing to run again, and
-// neither has a refusal that names another machine than the one the command
-// sent (machine; its flags would change this one), as the console's.
-func coresNext(err error, machine string) error {
+// the count kept at mixed speeds ("Continue with mixed speeds"). The cores
+// that fit are offered only when there are at least floor of them (the
+// fewest the machine runs on, coreFloor; asked only then): fewer would be
+// refused. A server with no room for the machine (server_full) has nothing
+// to run again, and neither has a refusal that names another machine than
+// the one the command sent (machine; its flags would change this one), as
+// the console's.
+func coresNext(err error, machine string, floor func() int) error {
 	var p *problem
 	if !asProblem(err, &p) || p.Next != "" || p.Cores == nil {
 		return err
@@ -218,13 +221,27 @@ func coresNext(err error, machine string) error {
 	switch p.Code {
 	case "core_speed_short", "core_speeds_mixed":
 		p.Next = mixed
-		if c.Fit > 0 {
+		if c.Fit > 0 && c.Fit >= floor() {
 			p.Next = fmt.Sprintf("use %s: run it again with --cores %d; or %s", coresWord(c.Fit), c.Fit, mixed)
 		}
 	case "core_speed_unknown":
 		p.Next = "livellm cores lists the speeds there are; or run it again with --core-speed any (any one speed)"
 	}
 	return err
+}
+
+// coreFloor is the fewest cores a machine of type kind, with its settings vm
+// (a create's flat settings, a set's vm block as stored), runs on, as the
+// API holds them: a desktop machine and Windows 11 (the edition a vm-windows
+// gets when it names none) 2; a server and Windows Server 1. A kind not
+// known ("": the machine couldn't be read) gets the most any machine needs,
+// so nothing under a floor is offered.
+func coreFloor(kind string, vm map[string]any) int {
+	edition, _ := vm["windowsEdition"].(string)
+	if kind == "" || kind == "vm-ubuntu-desktop" || (kind == "vm-windows" && edition != "server") {
+		return 2
+	}
+	return 1
 }
 
 // coresWord is a count of cores as the console words it: "1 core", "6 cores".
