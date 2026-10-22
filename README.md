@@ -393,7 +393,10 @@ the workspace. `reach` lists them under `alsoFrom` (`same app`, `links it`,
 `waits for it`, `drives it`, with `through`: what may reach the browser
 through that Browser API, whose inside address takes no key). An app that
 links it or waits for it brings its whole Composable App: the services that
-don't link it themselves name the one that does in `via`. Public addresses
+don't link it themselves name the one that does in `via`. A machine answers
+inside on `<res>` (SSH and its TCP and UDP ports), `<res>-http`,
+`<res>-internal` and `<res>-rdp` by port, and on `<res>-host` (no port): the
+machine itself on every port, TCP and UDP, for what may reach it. Public addresses
 keep their own settings. `livellm connect ID` prints the API's own `inside`
 block. A resource whose setting the platform hasn't written yet shows
 `reachableFrom: null` ("not set yet", and `through: null` on such a Browser

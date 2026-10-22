@@ -314,6 +314,18 @@ func TestInsideAddressesStackDefaultHostname(t *testing.T) {
 	}
 }
 
+// A machine answers on <res> for SSH and its raw ports, then on <res>-host,
+// the machine itself on every port, TCP and UDP, as the platform lists them.
+func TestInsideAddressesMachineHost(t *testing.T) {
+	w := map[string]any{"id": "box", "type": "vm-ubuntu", "vm": map[string]any{
+		"ports": []any{map[string]any{"name": "web", "port": float64(8080)}}}}
+	got := insideAddresses("ws-box", w)
+	if len(got) != 3 || got[0]["host"] != "ws-box" || got[0]["port"] != 22 ||
+		got[1]["host"] != "ws-box-host" || got[1]["port"] != nil || got[2]["host"] != "ws-box-http" {
+		t.Errorf("%v", got)
+	}
+}
+
 // A database's inside addresses follow its engine: PostgreSQL's primary on
 // <res>-rw:5432, Redis on <res>:6379, object storage's S3 on <res>:9000 (its
 // console is never reached from inside).

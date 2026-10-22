@@ -575,10 +575,11 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 	case strings.HasPrefix(t, "vm-"):
 		// The machine's ports by role, as the platform names them: SSH and
 		// raw ports on <res>, HTTP ports on <res>-http, internal ones on
-		// <res>-internal, Remote Desktop on <res>-rdp.
+		// <res>-internal, Remote Desktop on <res>-rdp. <res>-host, with no
+		// port, is the machine itself on every port, TCP and UDP.
 		ssh := hp(res, 22)
 		ssh["name"] = "ssh"
-		out := []map[string]any{ssh}
+		out := []map[string]any{ssh, {"host": res + "-host"}}
 		ports, _ := block(w, "vm")["ports"].([]any)
 		for _, x := range ports {
 			pm, _ := x.(map[string]any)
