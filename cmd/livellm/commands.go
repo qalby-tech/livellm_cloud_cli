@@ -69,6 +69,16 @@ type resource struct {
 	// Servers: an object storage of 3 servers, how many it runs and how
 	// many are ready (it keeps serving with one down).
 	Servers *serverCount `json:"servers,omitempty"`
+	// Cores: a running machine's cores, the clock they run at, or mixed
+	// core speeds with the words for it; absent where the servers list no
+	// speeds.
+	Cores *coreStatus `json:"cores,omitempty"`
+}
+
+type coreStatus struct {
+	SpeedMHz int    `json:"speedMHz,omitempty"`
+	Mixed    bool   `json:"mixed,omitempty"`
+	Message  string `json:"message,omitempty"`
 }
 
 type serverCount struct {
@@ -120,6 +130,7 @@ func resources() ([]resource, error) {
 			SSH       string       `json:"ssh"`
 			UsedBy    []string     `json:"usedBy"`
 			Servers   *serverCount `json:"servers"`
+			Cores     *coreStatus  `json:"cores"`
 			Endpoints []struct {
 				URL  string `json:"url"`
 				Addr string `json:"addr"`
@@ -163,7 +174,7 @@ func resources() ([]resource, error) {
 		if i, ok := byID[w.ID]; ok {
 			l := live.Workloads[i]
 			r.State, r.Ready, r.StopsAt = strings.ToLower(l.Phase), l.Ready, l.ExpiresAt
-			r.UsedBy, r.Servers = l.UsedBy, l.Servers
+			r.UsedBy, r.Servers, r.Cores = l.UsedBy, l.Servers, l.Cores
 			for _, e := range l.Endpoints {
 				switch {
 				case e.URL != "":
@@ -516,6 +527,7 @@ func cmdCreate(args []string) error {
 	reach := addReachFlag(fs)
 	var links repeated
 	fs.Var(&links, "database", "a machine or a Desktop App: let it reach this database (repeat it for more; nothing goes into the machine)")
+	cores := addCoreFlags(fs)
 	_ = fs.Parse(rest)
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
@@ -553,6 +565,9 @@ func cmdCreate(args []string) error {
 	}
 	nServers, err := serversFlag(kind, *servers)
 	if err != nil {
+		return err
+	}
+	if err := coresOnMachines(kind, cores); err != nil {
 		return err
 	}
 	if kind != "browser" && (*newID != "" || *locale != "" || *timezone != "" || *profile != "" || *profilePw != "") {
@@ -671,6 +686,9 @@ func cmdCreate(args []string) error {
 	if err := withMachineLinks(kind, body, links); err != nil {
 		return err
 	}
+	if err := withCores(kind, body, cores, false); err != nil {
+		return err
+	}
 	if kind == "browser" {
 		if *newID != "" {
 			body["id"] = *newID
@@ -681,7 +699,7 @@ func cmdCreate(args []string) error {
 		return fmt.Errorf("the settings need an id")
 	}
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
-		return err
+		return coresNext(err)
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
 }
@@ -1140,24 +1158,56 @@ func cmdSet(args []string) error {
 	}
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the settings that change")
+	cores := addCoreFlags(fs)
 	_ = fs.Parse(rest)
-	if *file == "" {
-		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}")
-	}
-	raw, err := os.ReadFile(*file)
+	changes, _, err := cores.changes()
 	if err != nil {
 		return err
 	}
-	var patch map[string]any
-	if err := json.Unmarshal(raw, &patch); err != nil {
-		return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
+	if *file == "" && len(changes) == 0 {
+		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, or a machine's --cores, --dedicated-cores, --core-speed or --mixed-speeds")
 	}
-	if len(patch) == 0 {
-		return fmt.Errorf("%s changes nothing", *file)
+	patch := map[string]any{}
+	if *file != "" {
+		raw, err := os.ReadFile(*file)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &patch); err != nil {
+			return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
+		}
+		if len(patch) == 0 && len(changes) == 0 {
+			return fmt.Errorf("%s changes nothing", *file)
+		}
+	}
+	// The cores flags go into the machine's own block, beside what the file
+	// holds there, in place of its values.
+	if len(changes) > 0 {
+		w, err := findWorkload(id)
+		if err != nil {
+			return err
+		}
+		kind, _ := w["type"].(string)
+		if err := coresOnMachines(kind, cores); err != nil {
+			return err
+		}
+		vm, ok := patch["vm"].(map[string]any)
+		if patch["vm"] != nil && !ok {
+			return fmt.Errorf("%s: \"vm\" isn't an object", *file)
+		}
+		if vm == nil {
+			vm = map[string]any{}
+		}
+		dedicated, _ := block(w, "vm")["dedicatedCores"].(bool)
+		if err := withCores(kind, vm, cores, dedicated); err != nil {
+			return err
+		}
+		patch["vm"] = vm
 	}
 	if err := patchWorkload(id, patch); err != nil {
-		return err
+		return coresNext(err)
 	}
+	restartNote(cores, id)
 	return print(map[string]any{"changed": id})
 }
 

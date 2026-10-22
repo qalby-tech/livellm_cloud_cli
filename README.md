@@ -326,6 +326,28 @@ livellm restore db BACKUP --as db-copy --host HOST
 livellm create --template shop --id shop-2 --automatic   # automatic, whatever the template says
 ```
 
+A machine's cores are shared unless you ask for dedicated ones: every core
+reserved for it on its server. Where the servers run their cores at different
+clock speeds, a machine's dedicated cores are all of one speed: any one that
+has them free, or the one `--core-speed` asks for (`5.7GHz`, or `5700` in
+MHz; `livellm cores` lists the speeds there are and how many dedicated cores
+of each fit on one server). Where every server runs at one speed there is
+nothing to choose, and `livellm cores` says so. When too few cores of one
+speed are free the API says so in its words, and the error says what to run
+again: fewer cores (`--cores N`, the cores that fit) or `--mixed-speeds`, which
+keeps the count with cores that may run at different speeds. The flags go in
+place of the file's values; `set` takes them without a file too, and a
+machine's dedicated cores and their speed take effect at its next restart.
+`livellm ls` and `livellm status` show the clock a running machine's cores
+got (`cores: {speedMHz}`), or `cores: {mixed: true}` with the words for it.
+
+```sh
+livellm cores                                              # the speeds, and what fits
+livellm create vm-ubuntu -f box.json --dedicated-cores     # any one speed
+livellm create vm-ubuntu -f box.json --dedicated-cores --core-speed 5.7GHz
+livellm set box --dedicated-cores --cores 6                # then: livellm restart box
+```
+
 For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
 
 ```sh

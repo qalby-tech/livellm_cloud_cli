@@ -38,6 +38,9 @@ type problem struct {
 	// Missing are the body paths a create from a template still needs (the
 	// secrets the template left out).
 	Missing []string
+	// Cores are the numbers a refusal of a machine's cores carries
+	// (cores.go).
+	Cores *coresRefusal
 }
 
 func (p *problem) Error() string {
@@ -193,6 +196,14 @@ func problemFrom(status int, raw []byte) *problem {
 			p.Msg, p.Next, p.Missing = msg, e.Next, e.Missing
 		}
 		p.Code = e.Code
+	}
+	// Read on their own, so a field of another refusal by the same name
+	// never costs it its words.
+	if coresCodes[p.Code] {
+		var c coresRefusal
+		if json.Unmarshal(raw, &c) == nil {
+			p.Cores = &c
+		}
 	}
 	return p
 }
