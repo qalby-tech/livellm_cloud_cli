@@ -199,13 +199,18 @@ type coresRefusal struct {
 // coresNext gives a cores refusal of a create or a set what to run again,
 // unless the API named a next step: the cores that fit ("Use N cores"), or
 // the count kept at mixed speeds ("Continue with mixed speeds"). A server
-// with no room for the machine (server_full) has nothing to run again.
-func coresNext(err error) error {
+// with no room for the machine (server_full) has nothing to run again, and
+// neither has a refusal that names another machine than the one the command
+// sent (machine; its flags would change this one), as the console's.
+func coresNext(err error, machine string) error {
 	var p *problem
 	if !asProblem(err, &p) || p.Next != "" || p.Cores == nil {
 		return err
 	}
 	c := p.Cores
+	if c.Workload != "" && machine != "" && c.Workload != machine {
+		return err
+	}
 	mixed := "continue with mixed speeds: run it again with --mixed-speeds"
 	if c.Cores > 0 {
 		mixed = fmt.Sprintf("continue with mixed speeds (%d cores): run it again with --mixed-speeds", c.Cores)

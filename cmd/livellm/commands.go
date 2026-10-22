@@ -702,7 +702,8 @@ func cmdCreate(args []string) error {
 		return fmt.Errorf("the settings need an id")
 	}
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
-		return coresNext(err)
+		id, _ := body["id"].(string)
+		return coresNext(err, id)
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
 }
@@ -1213,7 +1214,7 @@ func cmdSet(args []string) error {
 		patch["vm"] = vm
 	}
 	if err := patchWorkload(id, patch); err != nil {
-		return coresNext(err)
+		return coresNext(err, id)
 	}
 	restartNote(cores, id)
 	return print(map[string]any{"changed": id})

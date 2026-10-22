@@ -219,13 +219,20 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 			msgSpeedUnknown, "livellm cores lists the speeds", true},
 		{409, `{"error":"` + msgServerFull + `","code":"server_full","workload":"box"}`, msgServerFull, "", true},
 		{409, `{"error":"No server has room for this machine.","code":"server_full","workload":"box"}`, "No server has room for this machine.", "", true},
+		// A refusal that names another machine: its words alone, for each
+		// code (a run again would change this one).
+		{409, `{"error":"` + msgSpeedShort + `","code":"core_speed_short","workload":"other","cores":8,"fit":6,"speedMHz":5700}`, msgSpeedShort, "", true},
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"other","cores":20,"fit":16}`, msgSpeedsMixed, "", true},
+		{422, `{"error":"` + msgSpeedUnknown + `","code":"core_speed_unknown","workload":"other","cores":8,"fit":0,"speedMHz":3000}`, msgSpeedUnknown, "", true},
+		// No machine named: what to run again, as before.
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","cores":20,"fit":16}`, msgSpeedsMixed, "use 16 cores: run it again with --cores 16", false},
 		// The API named the next step: it stays.
 		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","cores":20,"fit":16,"next":"theirs"}`, msgSpeedsMixed, "theirs", true},
 		// Not a cores refusal: untouched.
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
 	}
 	for _, c := range cases {
-		err := coresNext(problemFrom(c.status, []byte(c.body)))
+		err := coresNext(problemFrom(c.status, []byte(c.body)), "box")
 		var p *problem
 		if !asProblem(err, &p) {
 			t.Fatalf("%s: not a problem: %v", c.body, err)
@@ -272,6 +279,16 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 	err = cmdSet([]string{"box", "--dedicated-cores"})
 	if err == nil || !strings.Contains(err.Error(), msgSpeedsMixed+" (409) — use 16 cores: run it again with --cores 16; or continue with mixed speeds (20 cores): run it again with --mixed-speeds") {
 		t.Errorf("set: %v", err)
+	}
+
+	// A set of box refused for another machine's cores offers nothing to run
+	// again: --cores or --mixed-speeds would change box.
+	f = newFakeAPI(t)
+	f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":20}}]}}`)
+	f.answers["PATCH /v1/workloads/box"] = answerStatus(409, `{"error":"`+msgSpeedsMixed+`","code":"core_speeds_mixed","workload":"other","cores":20,"fit":16}`)
+	err = cmdSet([]string{"box", "--dedicated-cores"})
+	if err == nil || !strings.Contains(err.Error(), msgSpeedsMixed) || strings.Contains(err.Error(), "run it again") {
+		t.Errorf("set, another machine: %v", err)
 	}
 }
 
