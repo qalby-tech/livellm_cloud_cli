@@ -37,6 +37,9 @@ func TestCreateMachineCores(t *testing.T) {
 	}
 	box := write("box.json", `{"id":"box","cpus":8,"memory":"16Gi"}`)
 	dedicated := write("dedicated.json", `{"id":"box","cpus":8,"dedicatedCores":true}`)
+	sized := write("sized.json", `{"id":"box","memory":"16Gi"}`)
+	one := write("one.json", `{"id":"box","cpus":1}`)
+	worded := write("worded.json", `{"id":"box","cpus":"8"}`)
 
 	for _, c := range []struct {
 		name string
@@ -57,7 +60,10 @@ func TestCreateMachineCores(t *testing.T) {
 			map[string]any{"id": "box", "cpus": float64(8), "memory": "16Gi", "dedicatedCores": true, "coreSpeed": float64(0)}},
 		{"mixed speeds", []string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--mixed-speeds"},
 			map[string]any{"id": "box", "cpus": float64(8), "memory": "16Gi", "dedicatedCores": true, "mixedSpeeds": true}},
-		{"the cores that fit, in place of the file's", []string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--cores", "6"},
+		// --cores agrees with the file's cpus, or the file says none.
+		{"the file's cores again", []string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--cores", "8"},
+			map[string]any{"id": "box", "cpus": float64(8), "memory": "16Gi", "dedicatedCores": true}},
+		{"cores the file leaves out", []string{"vm-ubuntu", "-f", sized, "--dedicated-cores", "--cores", "6"},
 			map[string]any{"id": "box", "cpus": float64(6), "memory": "16Gi", "dedicatedCores": true}},
 		{"the file is dedicated already", []string{"vm-ubuntu", "-f", dedicated, "--core-speed", "5.7GHz"},
 			map[string]any{"id": "box", "cpus": float64(8), "dedicatedCores": true, "coreSpeed": float64(5700)}},
@@ -83,17 +89,22 @@ func TestCreateMachineCores(t *testing.T) {
 		args []string
 		says string
 	}{
-		"a speed on shared cores":   {[]string{"vm-ubuntu", "-f", box, "--core-speed", "5.7GHz"}, "--core-speed goes with dedicated cores: add --dedicated-cores"},
-		"mixed speeds on shared":    {[]string{"vm-ubuntu", "-f", box, "--mixed-speeds"}, "--mixed-speeds goes with dedicated cores"},
-		"a speed, then shared":      {[]string{"vm-ubuntu", "-f", dedicated, "--dedicated-cores=false", "--core-speed", "5700"}, "--core-speed goes with dedicated cores"},
-		"a bare GHz":                {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--core-speed", "5.7"}, "--core-speed takes a clock in GHz or MHz"},
-		"a word":                    {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--core-speed", "fast"}, "--core-speed takes a clock in GHz or MHz"},
-		"no cores":                  {[]string{"vm-ubuntu", "-f", box, "--cores", "0"}, "--cores is a whole number of cores"},
-		"on an app":                 {[]string{"pod", "-f", box, "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
-		"on a Desktop App":          {[]string{"desktop", "-f", box, "--cores", "2"}, "--cores goes with a machine"},
-		"on a browser by id":        {[]string{"browser", "--id", "b", "--mixed-speeds"}, "--mixed-speeds goes with a machine"},
-		"on several apps":           {[]string{"apps", "-f", box, "--core-speed", "5700"}, "--core-speed goes with a machine"},
-		"on a database, first flag": {[]string{"storage", "-f", box, "--mixed-speeds", "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
+		"a speed on shared cores": {[]string{"vm-ubuntu", "-f", box, "--core-speed", "5.7GHz"}, "--core-speed goes with dedicated cores: add --dedicated-cores"},
+		"mixed speeds on shared":  {[]string{"vm-ubuntu", "-f", box, "--mixed-speeds"}, "--mixed-speeds goes with dedicated cores"},
+		"a speed, then shared":    {[]string{"vm-ubuntu", "-f", dedicated, "--dedicated-cores=false", "--core-speed", "5700"}, "--core-speed goes with dedicated cores"},
+		"a bare GHz":              {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--core-speed", "5.7"}, "--core-speed takes a clock in GHz or MHz"},
+		"a word":                  {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--core-speed", "fast"}, "--core-speed takes a clock in GHz or MHz"},
+		"no cores":                {[]string{"vm-ubuntu", "-f", box, "--cores", "0"}, "--cores is a whole number of cores"},
+		// Two counts: which one is meant is the user's to say (owner,
+		// 2026-10-22).
+		"cores the file disagrees with": {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--cores", "6"}, "box.json says 8 cores and --cores says 6: change one of them"},
+		"one core in the file":          {[]string{"vm-ubuntu", "-f", one, "--cores", "2"}, "one.json says 1 core and --cores says 2: change one of them"},
+		"cores in words in the file":    {[]string{"vm-ubuntu", "-f", worded, "--cores", "8"}, `worded.json says "cpus": "8" and --cores says 8: change one of them`},
+		"on an app":                     {[]string{"pod", "-f", box, "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
+		"on a Desktop App":              {[]string{"desktop", "-f", box, "--cores", "2"}, "--cores goes with a machine"},
+		"on a browser by id":            {[]string{"browser", "--id", "b", "--mixed-speeds"}, "--mixed-speeds goes with a machine"},
+		"on several apps":               {[]string{"apps", "-f", box, "--core-speed", "5700"}, "--core-speed goes with a machine"},
+		"on a database, first flag":     {[]string{"storage", "-f", box, "--mixed-speeds", "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
 		// flag reads `--dedicated-cores false` as true and stops at "false"
 		"a yes-or-no after a space": {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "false", "--core-speed", "5700"}, `"false" is left over: a yes-or-no flag takes its value after =`},
 	} {
@@ -114,6 +125,8 @@ func TestSetMachineCores(t *testing.T) {
 	dir := t.TempDir()
 	more := filepath.Join(dir, "more.json")
 	_ = os.WriteFile(more, []byte(`{"vm":{"cpus":8,"memory":"16Gi"},"reachableFrom":["web"]}`), 0o600)
+	memory := filepath.Join(dir, "memory.json")
+	_ = os.WriteFile(memory, []byte(`{"vm":{"memory":"16Gi"},"reachableFrom":["web"]}`), 0o600)
 	const ws = `{"spec":{"workloads":[
 		{"id":"box","type":"vm-ubuntu","vm":{"cpus":4}},
 		{"id":"fast","type":"vm-windows","vm":{"cpus":8,"dedicatedCores":true,"coreSpeed":5700}},
@@ -127,8 +140,10 @@ func TestSetMachineCores(t *testing.T) {
 	}{
 		{"dedicated, no file", []string{"box", "--dedicated-cores"},
 			map[string]any{"vm": map[string]any{"dedicatedCores": true}}},
-		{"the cores that fit, beside the file's", []string{"box", "-f", more, "--cores", "6", "--dedicated-cores"},
+		{"the cores that fit, beside the file's", []string{"box", "-f", memory, "--cores", "6", "--dedicated-cores"},
 			map[string]any{"vm": map[string]any{"cpus": float64(6), "memory": "16Gi", "dedicatedCores": true}, "reachableFrom": []any{"web"}}},
+		{"the file's cores again", []string{"box", "-f", more, "--cores", "8", "--dedicated-cores"},
+			map[string]any{"vm": map[string]any{"cpus": float64(8), "memory": "16Gi", "dedicatedCores": true}, "reachableFrom": []any{"web"}}},
 		{"another speed on a dedicated machine", []string{"fast", "--core-speed", "4.4GHz"},
 			map[string]any{"vm": map[string]any{"coreSpeed": float64(4400)}}},
 		{"mixed speeds on a dedicated machine", []string{"fast", "--mixed-speeds"},
@@ -183,6 +198,7 @@ func TestSetMachineCores(t *testing.T) {
 		"mixed speeds on a shared machine": {[]string{"box", "--mixed-speeds"}, "--mixed-speeds goes with dedicated cores: add --dedicated-cores"},
 		"a speed on a shared machine":      {[]string{"box", "--core-speed", "5.7GHz"}, "--core-speed goes with dedicated cores"},
 		"on an app":                        {[]string{"web", "--cores", "2"}, "--cores goes with a machine"},
+		"cores the file disagrees with":    {[]string{"box", "-f", more, "--cores", "6", "--dedicated-cores"}, "more.json says 8 cores and --cores says 6: change one of them"},
 		"nothing":                          {[]string{"box"}, "pass the changes with -f"},
 		"a yes-or-no after a space":        {[]string{"fast", "--dedicated-cores", "false", "--cores", "2"}, `"false" is left over`},
 		"no such machine":                  {[]string{"gone", "--dedicated-cores"}, `there is nothing called "gone" here`},

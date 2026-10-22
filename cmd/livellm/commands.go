@@ -689,7 +689,7 @@ func cmdCreate(args []string) error {
 	if err := withMachineLinks(kind, body, links); err != nil {
 		return err
 	}
-	if err := withCores(kind, body, cores, false); err != nil {
+	if err := withCores(kind, body, *file, cores, false); err != nil {
 		return err
 	}
 	if kind == "browser" {
@@ -1210,7 +1210,7 @@ func cmdSet(args []string) error {
 		}
 		stored := block(w, "vm")
 		dedicated, _ := stored["dedicatedCores"].(bool)
-		if err := withCores(kind, vm, cores, dedicated); err != nil {
+		if err := withCores(kind, vm, *file, cores, dedicated); err != nil {
 			return err
 		}
 		givesUpMixed(cores, vm, stored)

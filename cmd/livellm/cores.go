@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math"
@@ -14,11 +15,12 @@ import (
 // speeds, dedicated cores are all of one speed: --core-speed asks for one
 // (left out, any one speed that has the cores free), and --mixed-speeds
 // keeps the count when no one speed has it. --cores is how many (sent as
-// cpus). Each flag goes in place of the file's value, and only a flag given
-// is sent: a machine saved without one keeps what it has. The speeds there
-// are, and how many dedicated cores of each fit, come from GET
-// /v1/machine-cores. A cluster whose servers all run at one speed never asks
-// for one.
+// cpus), and must agree with the file's cpus when it has one (owner,
+// 2026-10-22: nothing is made from two counts). Each other flag goes in
+// place of the file's value, and only a flag given is sent: a machine saved
+// without one keeps what it has. The speeds there are, and how many
+// dedicated cores of each fit, come from GET /v1/machine-cores. A cluster
+// whose servers all run at one speed never asks for one.
 
 // coreFlags are a create's or a set's cores flags.
 type coreFlags struct {
@@ -100,17 +102,24 @@ func coreSpeedFlag(v string) (int, error) {
 
 // withCores puts the cores flags' settings into what a create or a set sends
 // for a machine of type kind: into body itself (a create's settings are
-// flat, a set's are the vm block). dedicated is whether the machine has
-// dedicated cores before this (a set's machine as stored; false for a new
-// one). A speed or mixed speeds goes with dedicated cores only, which the
-// platform would otherwise drop without a word.
-func withCores(kind string, body map[string]any, c *coreFlags, dedicated bool) error {
+// flat, a set's are the vm block), read from file ("" for a set without
+// one). --cores must agree with the cpus the file says, if it says any.
+// dedicated is whether the machine has dedicated cores before this (a set's
+// machine as stored; false for a new one). A speed or mixed speeds goes with
+// dedicated cores only, which the platform would otherwise drop without a
+// word.
+func withCores(kind string, body map[string]any, file string, c *coreFlags, dedicated bool) error {
 	if err := coresOnMachines(kind, c); err != nil {
 		return err
 	}
 	changes, _, err := c.changes()
 	if err != nil || len(changes) == 0 {
 		return err
+	}
+	if n, ok := changes["cpus"].(int); ok {
+		if err := coresAgree(file, body["cpus"], n); err != nil {
+			return err
+		}
 	}
 	for k, v := range changes {
 		body[k] = v
@@ -127,6 +136,26 @@ func withCores(kind string, body map[string]any, c *coreFlags, dedicated bool) e
 		}
 	}
 	return nil
+}
+
+// coresAgree refuses --cores n beside another count in file (had: the cpus
+// it says, nil for none): which one is meant is the user's to say, so nothing
+// is sent.
+func coresAgree(file string, had any, n int) error {
+	if had == nil {
+		return nil
+	}
+	raw, _ := json.Marshal(had)
+	says := `"cpus": ` + string(raw)
+	if f, ok := had.(float64); ok {
+		if f == float64(n) {
+			return nil
+		}
+		if f >= 0 && f == math.Trunc(f) {
+			says = coresWord(int(f))
+		}
+	}
+	return fmt.Errorf("%s says %s and --cores says %d: change one of them", file, says, n)
 }
 
 // coresLeftovers refuses what is left after the flags once a cores flag was
