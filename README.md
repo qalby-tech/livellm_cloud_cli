@@ -334,9 +334,12 @@ MHz; `livellm cores` lists the speeds there are and how many dedicated cores
 of each fit on one server). Where every server runs at one speed there is
 nothing to choose, and `livellm cores` says so. When too few cores of one
 speed are free the API says so in its words, and the error says what to run
-again: fewer cores (`--cores N`, the cores that fit) or `--mixed-speeds`, which
+again: fewer cores (the cores that fit: `"cpus": N` in a create's file, or in
+a set's file that says them; `--cores N` otherwise) or `--mixed-speeds`, which
 keeps the count with cores that may run at different speeds. The flags go in
-place of the file's values; `set` takes them without a file too, and a
+place of the file's values, but `--cores` must agree with the file's `cpus`
+when it says them: `machine.json says 8 cores and --cores says 6: change one
+of them`, and nothing is made. `set` takes the flags without a file too, and a
 machine's cores (`--cores` alone too), dedicated cores and their speed take
 effect at its next restart.
 On `set`, a new `--core-speed` gives up the mixed speeds a machine kept
