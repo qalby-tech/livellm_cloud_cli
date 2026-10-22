@@ -85,9 +85,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm start ID                           start a stopped one again
   livellm set ID -f FILE                     change some settings (only what the file holds)
           [--cores N] [--dedicated-cores[=false]] [--core-speed S] [--mixed-speeds[=false]]
-                                             a machine's cores, as with create (-f optional); dedicated
-                                             cores and their speed take effect at its next restart;
-                                             a new --core-speed gives up mixed speeds kept before
+                                             a machine's cores, as with create (-f optional); its cores
+                                             (--cores alone too), dedicated cores and their speed take
+                                             effect at its next restart; a new --core-speed gives up
+                                             mixed speeds kept before
   livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
