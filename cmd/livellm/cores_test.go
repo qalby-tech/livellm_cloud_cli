@@ -274,25 +274,27 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 	// fit.
 	one := `{"error":"Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":1,"speedMHz":5700}`
 	for _, c := range []struct {
+		status    int
 		body      string
 		floor     int
 		wantNext  string
 		wantNoUse bool
 		asked     bool
 	}{
-		{one, 2, "continue with mixed speeds (4 cores): run it again with --mixed-speeds", true, true},
-		{`{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":1}`, 2,
+		{409, one, 2, "continue with mixed speeds (4 cores): run it again with --mixed-speeds", true, true},
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":1}`, 2,
 			"continue with mixed speeds (4 cores): run it again with --mixed-speeds", true, true},
-		{one, 1, "use 1 core: run it again with --cores 1", false, true},
-		{`{"error":"Only 2 cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":2,"speedMHz":5700}`, 2,
+		{409, one, 1, "use 1 core: run it again with --cores 1", false, true},
+		{409, `{"error":"Only 2 cores at 5.7 GHz are available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":2,"speedMHz":5700}`, 2,
 			"use 2 cores: run it again with --cores 2", false, true},
-		{`{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":0}`, 2,
+		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","workload":"box","cores":4,"fit":0}`, 2,
 			"continue with mixed speeds (4 cores)", true, false},
-		{`{"error":"` + msgSpeedUnknown + `","code":"core_speed_unknown","workload":"box","cores":4,"fit":0,"speedMHz":3000}`, 2,
+		// A speed no server has is a 422, as the API sends it.
+		{422, `{"error":"` + msgSpeedUnknown + `","code":"core_speed_unknown","workload":"box","cores":4,"fit":0,"speedMHz":3000}`, 2,
 			"livellm cores lists the speeds", true, false},
 	} {
 		asked := false
-		err := coresNext(problemFrom(409, []byte(c.body)), "box", func() int { asked = true; return c.floor })
+		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { asked = true; return c.floor })
 		var p *problem
 		if !asProblem(err, &p) || !strings.Contains(p.Next, c.wantNext) {
 			t.Errorf("floor %d, %s: next %v, want %q", c.floor, c.body, err, c.wantNext)
@@ -303,6 +305,9 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		}
 		if asked != c.asked {
 			t.Errorf("floor %d, %s: floor asked %v", c.floor, c.body, asked)
+		}
+		if exitCode(err) != map[int]int{422: 1, 409: 4}[c.status] {
+			t.Errorf("floor %d, %s: exit %d", c.floor, c.body, exitCode(err))
 		}
 	}
 
