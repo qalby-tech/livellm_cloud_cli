@@ -704,7 +704,9 @@ func cmdCreate(args []string) error {
 	if err := call("POST", "/v1/workloads/"+url.PathEscape(kind), body, nil); err != nil {
 		// The API names the machine by the id it made, trimmed.
 		id, _ := body["id"].(string)
-		return coresNext(err, strings.TrimSpace(id), func() int { return coreFloor(kind, body) })
+		// The cores that fit are said in the file, which --cores agrees with.
+		again := coresAgain{file: *file, flag: flagsGiven(fs)["cores"]}
+		return coresNext(err, strings.TrimSpace(id), func() int { return coreFloor(kind, body) }, again)
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
 }
@@ -1188,8 +1190,15 @@ func cmdSet(args []string) error {
 			return fmt.Errorf("%s changes nothing", *file)
 		}
 	}
+	// A count the file says is changed there (--cores beside it must agree);
+	// else --cores says it.
+	again := coresAgain{}
+	if vm, _ := patch["vm"].(map[string]any); vm["cpus"] != nil {
+		again = coresAgain{file: *file, block: "vm", flag: flagsGiven(fs)["cores"]}
+	}
 	// The cores flags go into the machine's own block, beside what the file
-	// holds there, in place of its values.
+	// holds there: --cores agreeing with its cpus, the others in place of
+	// its values.
 	var w map[string]any
 	if len(changes) > 0 {
 		found, err := findWorkload(id)
@@ -1225,7 +1234,7 @@ func cmdSet(args []string) error {
 			}
 			kind, _ := w["type"].(string)
 			return coreFloor(kind, block(w, "vm"))
-		})
+		}, again)
 	}
 	restartNote(cores, id)
 	return print(map[string]any{"changed": id})

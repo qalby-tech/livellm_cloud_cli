@@ -260,7 +260,7 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
 	}
 	for _, c := range cases {
-		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { return 1 })
+		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { return 1 }, coresAgain{})
 		var p *problem
 		if !asProblem(err, &p) {
 			t.Fatalf("%s: not a problem: %v", c.body, err)
@@ -310,7 +310,7 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 			"livellm cores lists the speeds", true, false},
 	} {
 		asked := false
-		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { asked = true; return c.floor })
+		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { asked = true; return c.floor }, coresAgain{})
 		var p *problem
 		if !asProblem(err, &p) || !strings.Contains(p.Next, c.wantNext) {
 			t.Errorf("floor %d, %s: next %v, want %q", c.floor, c.body, err, c.wantNext)
@@ -352,11 +352,24 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 	_ = os.WriteFile(box, []byte(`{"id":"box","cpus":8}`), 0o600)
 	short := `{"error":"` + msgSpeedShort + `","code":"core_speed_short","workload":"box","cores":8,"fit":6,"speedMHz":5700}`
 
+	// A create from a file: the cores that fit are said in the file, with
+	// --cores beside them when the command gave it (owner, 2026-10-22).
 	f := newFakeAPI(t)
 	f.answers["POST /v1/workloads/vm-ubuntu"] = answerStatus(409, short)
 	err := cmdCreate([]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "--core-speed", "5.7GHz"})
-	if err == nil || !strings.Contains(err.Error(), msgSpeedShort+" (409) — use 6 cores: run it again with --cores 6") {
+	if err == nil || !strings.Contains(err.Error(), msgSpeedShort+` (409) — use 6 cores: set "cpus": 6 in `+box+
+		` and run it again; or continue with mixed speeds (8 cores): run it again with --mixed-speeds`) {
 		t.Errorf("create: %v", err)
+	}
+	sized := filepath.Join(dir, "sized.json")
+	_ = os.WriteFile(sized, []byte(`{"id":"box"}`), 0o600)
+	for _, file := range []string{box, sized} {
+		f = newFakeAPI(t)
+		f.answers["POST /v1/workloads/vm-ubuntu"] = answerStatus(409, short)
+		err = cmdCreate([]string{"vm-ubuntu", "-f", file, "--dedicated-cores", "--cores", "8"})
+		if err == nil || !strings.Contains(err.Error(), `use 6 cores: set "cpus": 6 in `+file+" and run it again with --cores 6; or") {
+			t.Errorf("create %s --cores 8: %v", file, err)
+		}
 	}
 
 	// The API trims the id it makes and names the machine so: still this one.
@@ -365,7 +378,7 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 	f = newFakeAPI(t)
 	f.answers["POST /v1/workloads/vm-ubuntu"] = answerStatus(409, short)
 	err = cmdCreate([]string{"vm-ubuntu", "-f", spaced, "--dedicated-cores", "--core-speed", "5.7GHz"})
-	if err == nil || !strings.Contains(err.Error(), "use 6 cores: run it again with --cores 6") {
+	if err == nil || !strings.Contains(err.Error(), `use 6 cores: set "cpus": 6 in `+spaced+" and run it again") {
 		t.Errorf("create, id with spaces: %v", err)
 	}
 
@@ -375,6 +388,29 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 	err = cmdSet([]string{"box", "--dedicated-cores"})
 	if err == nil || !strings.Contains(err.Error(), msgSpeedsMixed+" (409) — use 16 cores: run it again with --cores 16; or continue with mixed speeds (20 cores): run it again with --mixed-speeds") {
 		t.Errorf("set: %v", err)
+	}
+
+	// A set whose file says the cores: they are changed there; a file that
+	// says none takes --cores.
+	counted := filepath.Join(dir, "counted.json")
+	_ = os.WriteFile(counted, []byte(`{"vm":{"cpus":20,"dedicatedCores":true}}`), 0o600)
+	uncounted := filepath.Join(dir, "uncounted.json")
+	_ = os.WriteFile(uncounted, []byte(`{"vm":{"dedicatedCores":true}}`), 0o600)
+	for _, c := range []struct {
+		args []string
+		next string
+	}{
+		{[]string{"box", "-f", counted}, `use 16 cores: set "cpus": 16 in ` + counted + `'s "vm" block and run it again; or continue with mixed speeds (20 cores)`},
+		{[]string{"box", "-f", counted, "--cores", "20"}, `use 16 cores: set "cpus": 16 in ` + counted + `'s "vm" block and run it again with --cores 16; or`},
+		{[]string{"box", "-f", uncounted}, "use 16 cores: run it again with --cores 16; or continue with mixed speeds (20 cores)"},
+	} {
+		f = newFakeAPI(t)
+		f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":20}}]}}`)
+		f.answers["PATCH /v1/workloads/box"] = answerStatus(409, `{"error":"`+msgSpeedsMixed+`","code":"core_speeds_mixed","workload":"box","cores":20,"fit":16}`)
+		err = cmdSet(c.args)
+		if err == nil || !strings.Contains(err.Error(), c.next) {
+			t.Errorf("set %v: %v, want %q", c.args, err, c.next)
+		}
 	}
 
 	// A set of box refused for another machine's cores offers nothing to run
@@ -399,7 +435,7 @@ func TestCoresRefusalsKeepTheMachinesFloor(t *testing.T) {
 		return p
 	}
 	one := `{"error":"Only 1 core at 5.7 GHz is available. Continue with mixed core speeds?","code":"core_speed_short","workload":"box","cores":4,"fit":1,"speedMHz":5700}`
-	offer, mixed := "use 1 core: run it again with --cores 1", "continue with mixed speeds (4 cores): run it again with --mixed-speeds"
+	mixed := "continue with mixed speeds (4 cores): run it again with --mixed-speeds"
 
 	for _, c := range []struct {
 		kind, body string
@@ -413,9 +449,11 @@ func TestCoresRefusalsKeepTheMachinesFloor(t *testing.T) {
 	} {
 		f := newFakeAPI(t)
 		f.answers["POST /v1/workloads/"+c.kind] = answerStatus(409, one)
-		err := cmdCreate([]string{c.kind, "-f", write("box.json", c.body), "--dedicated-cores", "--core-speed", "5.7GHz"})
+		file := write("box.json", c.body)
+		offer := `use 1 core: set "cpus": 1 in ` + file + " and run it again"
+		err := cmdCreate([]string{c.kind, "-f", file, "--dedicated-cores", "--core-speed", "5.7GHz"})
 		if err == nil || !strings.Contains(err.Error(), "Only 1 core at 5.7 GHz") || !strings.Contains(err.Error(), mixed) ||
-			strings.Contains(err.Error(), offer) == !c.offered || exitCode(err) != 4 {
+			strings.Contains(err.Error(), offer) != c.offered || strings.Contains(err.Error(), "use ") != c.offered || exitCode(err) != 4 {
 			t.Errorf("create %s %s: %v", c.kind, c.body, err)
 		}
 	}

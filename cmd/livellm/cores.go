@@ -226,15 +226,15 @@ type coresRefusal struct {
 }
 
 // coresNext gives a cores refusal of a create or a set what to run again,
-// unless the API named a next step: the cores that fit ("Use N cores"), or
-// the count kept at mixed speeds ("Continue with mixed speeds"). The cores
-// that fit are offered only when there are at least floor of them (the
-// fewest the machine runs on, coreFloor; asked only then): fewer would be
-// refused. A server with no room for the machine (server_full) has nothing
-// to run again, and neither has a refusal that names another machine than
-// the one the command sent (machine; its flags would change this one), as
-// the console's.
-func coresNext(err error, machine string, floor func() int) error {
+// unless the API named a next step: the cores that fit ("Use N cores", said
+// as again says it), or the count kept at mixed speeds ("Continue with mixed
+// speeds"). The cores that fit are offered only when there are at least
+// floor of them (the fewest the machine runs on, coreFloor; asked only
+// then): fewer would be refused. A server with no room for the machine
+// (server_full) has nothing to run again, and neither has a refusal that
+// names another machine than the one the command sent (machine; its flags
+// would change this one), as the console's.
+func coresNext(err error, machine string, floor func() int, again coresAgain) error {
 	var p *problem
 	if !asProblem(err, &p) || p.Next != "" || p.Cores == nil {
 		return err
@@ -251,12 +251,37 @@ func coresNext(err error, machine string, floor func() int) error {
 	case "core_speed_short", "core_speeds_mixed":
 		p.Next = mixed
 		if c.Fit > 0 && c.Fit >= floor() {
-			p.Next = fmt.Sprintf("use %s: run it again with --cores %d; or %s", coresWord(c.Fit), c.Fit, mixed)
+			p.Next = fmt.Sprintf("use %s: %s; or %s", coresWord(c.Fit), again.use(c.Fit), mixed)
 		}
 	case "core_speed_unknown":
 		p.Next = "livellm cores lists the speeds there are; or run it again with --core-speed any (any one speed)"
 	}
 	return err
+}
+
+// coresAgain is where a command refused for its cores takes another count:
+// the "cpus" its file says (file; block, the file's block that holds them:
+// "" for a create's flat settings), as a create from a file always does
+// (owner, 2026-10-22), with --cores again beside it when the command gave
+// one (flag), which must agree; or, with no count in a file, --cores N.
+type coresAgain struct {
+	file, block string
+	flag        bool
+}
+
+// use is how to run the command again with n cores.
+func (a coresAgain) use(n int) string {
+	if a.file == "" {
+		return fmt.Sprintf("run it again with --cores %d", n)
+	}
+	in := a.file
+	if a.block != "" {
+		in = fmt.Sprintf("%s's %q block", a.file, a.block)
+	}
+	if a.flag {
+		return fmt.Sprintf(`set "cpus": %d in %s and run it again with --cores %d`, n, in, n)
+	}
+	return fmt.Sprintf(`set "cpus": %d in %s and run it again`, n, in)
 }
 
 // coreFloor is the fewest cores a machine of type kind, with its settings vm
