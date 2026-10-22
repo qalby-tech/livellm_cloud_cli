@@ -171,11 +171,13 @@ func coresOnMachines(kind string, c *coreFlags) error {
 	return nil
 }
 
-// restartNote is the line a set of a machine's dedicated cores, speed or
-// mixed speeds prints on stderr: they take effect at its next restart.
+// restartNote is the line a set of a machine's cores, dedicated cores, speed
+// or mixed speeds prints on stderr: each takes effect at its next restart.
+// The count too: a running machine keeps the cores it started with, and
+// nothing restarts it on its own.
 func restartNote(c *coreFlags, id string) {
 	given := flagsGiven(c.fs)
-	if given["dedicated-cores"] || given["core-speed"] || given["mixed-speeds"] {
+	if given["cores"] || given["dedicated-cores"] || given["core-speed"] || given["mixed-speeds"] {
 		fmt.Fprintf(os.Stderr, "the cores change at %s's next restart (livellm restart %s)\n", id, id)
 	}
 }

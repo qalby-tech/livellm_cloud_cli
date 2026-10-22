@@ -146,6 +146,8 @@ func TestSetMachineCores(t *testing.T) {
 			map[string]any{"vm": map[string]any{"coreSpeed": float64(4400), "mixedSpeeds": true}}},
 		{"more cores keep mixed speeds", []string{"floats", "--cores", "24"},
 			map[string]any{"vm": map[string]any{"cpus": float64(24)}}},
+		{"cores alone on a shared machine", []string{"box", "--cores", "2"},
+			map[string]any{"vm": map[string]any{"cpus": float64(2)}}},
 		{"a file alone: as written", []string{"box", "-f", more},
 			map[string]any{"vm": map[string]any{"cpus": float64(8), "memory": "16Gi"}, "reachableFrom": []any{"web"}}},
 	} {
@@ -162,7 +164,12 @@ func TestSetMachineCores(t *testing.T) {
 		if got := bodyOf(t, w[0]); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: sent %v, want %v", c.name, got, c.want)
 		}
-		cores := strings.Contains(strings.Join(c.args, " "), "-speed") || strings.Contains(strings.Join(c.args, " "), "--dedicated-cores")
+		// Every cores flag takes effect at the next restart, --cores alone
+		// too; a file alone says nothing.
+		cores := false
+		for _, a := range c.args {
+			cores = cores || strings.HasPrefix(a, "--")
+		}
 		if note := strings.Contains(stderr, "next restart (livellm restart "+c.args[0]+")"); note != cores {
 			t.Errorf("%s: stderr %q", c.name, stderr)
 		}
