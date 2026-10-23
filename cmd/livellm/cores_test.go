@@ -13,7 +13,8 @@ import (
 // The owner's words for the four refusals, as the API sends them.
 const (
 	msgSpeedShort   = "Only 6 cores at 5.7 GHz are available. Continue with mixed core speeds?"
-	msgSpeedsMixed  = "Mixed core speeds: this machine's cores run at different clock speeds."
+	msgSpeedsMixed  = "No server has 20 free cores of one speed. Continue with cores of mixed speeds?"
+	msgMixedCard    = "Mixed core speeds"
 	msgSpeedUnknown = "No server this machine may run on has cores at 3 GHz."
 	msgServerFull   = "This server is full: it has no room for this machine."
 )
@@ -555,7 +556,7 @@ func TestListShowsCores(t *testing.T) {
 		{"id":"web","type":"pod","pod":{"image":"nginx"}}]}}`)
 	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[
 		{"id":"fast","phase":"Running","ready":true,"cores":{"speedMHz":5700}},
-		{"id":"desk","phase":"Running","ready":true,"cores":{"mixed":true,"message":"` + msgSpeedsMixed + `"}},
+		{"id":"desk","phase":"Running","ready":true,"cores":{"mixed":true,"message":"` + msgMixedCard + `"}},
 		{"id":"web","phase":"Running","ready":true}]}`)
 	out, _, err := captured(t, func() error { return cmdList(nil) })
 	if err != nil {
@@ -568,7 +569,7 @@ func TestListShowsCores(t *testing.T) {
 	}
 	want := map[string]any{
 		"fast": map[string]any{"speedMHz": float64(5700)},
-		"desk": map[string]any{"mixed": true, "message": msgSpeedsMixed},
+		"desk": map[string]any{"mixed": true, "message": msgMixedCard},
 		"web":  nil,
 	}
 	if !reflect.DeepEqual(got, want) {

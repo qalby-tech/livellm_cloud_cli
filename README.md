@@ -346,7 +346,7 @@ On `set`, a new `--core-speed` gives up the mixed speeds a machine kept
 (`--mixed-speeds` with it keeps them). A yes-or-no flag takes its value after
 `=`: `--dedicated-cores=false` makes a machine's cores shared again.
 `livellm ls` and `livellm status` show the clock a running machine's cores
-got (`cores: {speedMHz}`), or `cores: {mixed: true}` with the words for it.
+got (`cores: {speedMHz}`), or `cores: {mixed: true, message: "Mixed core speeds"}`.
 
 ```sh
 livellm cores                                              # the speeds, and what fits
