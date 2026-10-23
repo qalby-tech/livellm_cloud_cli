@@ -266,7 +266,7 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
 		// Dedicated cores in pairs is the API's to judge: its words as it
 		// says them, nothing to run again made up here.
-		{422, `{"error":"` + msgPairs + `","code":"dedicated_pairs","workload":"box","cores":9}`, msgPairs, "", true},
+		{422, `{"error":"` + msgPairs + `","code":"cores_pairs","workload":"box","cores":9,"choices":[8,10]}`, msgPairs, "", true},
 		{422, `{"error":"` + msgPairs + `"}`, msgPairs, "", true},
 	}
 	for _, c := range cases {
@@ -425,7 +425,7 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 
 	// Dedicated cores in pairs: the API's words as it says them, on a create
 	// and a set, with nothing to run again made up here.
-	pairs := answerStatus(422, `{"error":"`+msgPairs+`","code":"dedicated_pairs","workload":"box","cores":9}`)
+	pairs := answerStatus(422, `{"error":"`+msgPairs+`","code":"cores_pairs","workload":"box","cores":9,"choices":[8,10]}`)
 	nine := filepath.Join(dir, "nine.json")
 	_ = os.WriteFile(nine, []byte(`{"id":"box","cpus":9}`), 0o600)
 	f = newFakeAPI(t)
