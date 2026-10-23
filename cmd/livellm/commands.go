@@ -589,7 +589,7 @@ func cmdCreate(args []string) error {
 	// A machine takes a time zone too (set when it is made); the rest are a
 	// browser's alone.
 	if kind != "browser" && (*newID != "" || *locale != "" || *profile != "" || *profilePw != "") {
-		return fmt.Errorf("--id, --locale, --timezone and --profile go with create browser")
+		return fmt.Errorf("--id, --locale and --profile go with create browser")
 	}
 	if kind != "browser" && !isMachine(kind) && *timezone != "" {
 		return fmt.Errorf("--timezone goes with create of a browser or a machine (vm-ubuntu, vm-ubuntu-desktop or vm-windows)")
