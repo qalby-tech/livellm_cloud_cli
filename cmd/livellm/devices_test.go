@@ -97,6 +97,10 @@ func TestSetMachineDevices(t *testing.T) {
 	_ = os.WriteFile(mem, []byte(`{"vm":{"memory":"16Gi"}}`), 0o600)
 	gpu := filepath.Join(dir, "gpu.json")
 	_ = os.WriteFile(gpu, []byte(`{"vm":{"devices":["rtx5090"]}}`), 0o600)
+	zone := filepath.Join(dir, "zone.json")
+	_ = os.WriteFile(zone, []byte(`{"vm":{"timeZone":"UTC","memory":"8Gi"}}`), 0o600)
+	empty := filepath.Join(dir, "empty.json")
+	_ = os.WriteFile(empty, []byte(`{}`), 0o600)
 	const ws = `{"spec":{"workloads":[
 		{"id":"box","type":"vm-windows","vm":{"cpus":4,"devices":["station-usb"]}},
 		{"id":"web","type":"pod","pod":{"image":"nginx"}},
@@ -117,6 +121,8 @@ func TestSetMachineDevices(t *testing.T) {
 			map[string]any{"vm": map[string]any{"devices": []any{"rtx5090"}}}},
 		{"with the cores", "the cores and the devices change at box's next restart (livellm restart box)", []string{"box", "--devices", "rtx5090", "--dedicated-cores"},
 			map[string]any{"vm": map[string]any{"devices": []any{"rtx5090"}, "dedicatedCores": true}}},
+		{"an empty file beside them", "the devices change at", []string{"box", "-f", empty, "--devices", "rtx5090"},
+			map[string]any{"vm": map[string]any{"devices": []any{"rtx5090"}}}},
 	} {
 		f := newFakeAPI(t)
 		f.answers["GET /v1/workspace"] = answerJSON(ws)
@@ -145,6 +151,7 @@ func TestSetMachineDevices(t *testing.T) {
 		"a machine's time zone":           {[]string{"box", "--timezone", "UTC"}, "a machine's time zone is set when it is made (livellm create vm-windows --timezone ZONE); change it on the machine itself"},
 		"a browser's time zone":           {[]string{"shop", "--timezone", "UTC"}, "a browser's time zone: livellm browser locale shop --timezone ZONE"},
 		"an app's time zone":              {[]string{"web", "--timezone", "UTC"}, "--timezone goes with create of a machine or a browser"},
+		"a time zone in the file":         {[]string{"box", "-f", zone}, `zone.json: a machine's time zone is set when it is made, and a set doesn't change it: leave "timeZone" out`},
 	} {
 		f := newFakeAPI(t)
 		f.answers["GET /v1/workspace"] = answerJSON(ws)

@@ -381,7 +381,7 @@ machine's next restart.
 A machine's time zone is set when it is made: `create … --timezone
 Europe/Moscow` (or `"timeZone"` in the file), else the cluster's. After that
 it is the machine's own: change it on the machine itself (`set` refuses
-`--timezone`).
+`--timezone`, and a file's `"timeZone"`).
 
 Ports published together go in a machine's `"portGroups"`: each group keeps
 its ports' numbers inside the machine and is published at those numbers plus

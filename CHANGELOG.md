@@ -44,8 +44,9 @@ platform and attaches them to the GitHub release.
   API's words with what to do next. Needs LiveLLM API 0.74 or newer.
 - `create` of a machine takes `--timezone ZONE` (sent as `timeZone`, agreeing
   with the file's): the machine's time zone when it is made, else the
-  cluster's. `set` refuses `--timezone` with where it changes instead: on the
-  machine itself, or `browser locale` for a browser. Needs LiveLLM API 0.75
+  cluster's. `set` refuses `--timezone`, and a file's `"vm"` `"timeZone"`,
+  with where it changes instead: on the machine itself, or `browser locale`
+  for a browser. Needs LiveLLM API 0.75
   or newer.
 - `connect` of a machine lists where its port groups (`"portGroups"` in the
   file, LiveLLM API 0.76 or newer) are published: each port's number inside,

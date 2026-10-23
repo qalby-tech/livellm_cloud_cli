@@ -1221,8 +1221,15 @@ func cmdSet(args []string) error {
 		if err := json.Unmarshal(raw, &patch); err != nil {
 			return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
 		}
-		if len(patch) == 0 && len(changes) == 0 {
+		if len(patch) == 0 && len(changes) == 0 && !devices.given() {
 			return fmt.Errorf("%s changes nothing", *file)
+		}
+		// A machine's time zone was written into it when it was made: a
+		// set would store another and change nothing on the machine.
+		if vm, _ := patch["vm"].(map[string]any); vm != nil {
+			if _, has := vm["timeZone"]; has {
+				return fmt.Errorf("%s: a machine's time zone is set when it is made, and a set doesn't change it: leave \"timeZone\" out; change it on the machine itself", *file)
+			}
 		}
 	}
 	// A count the file says is changed there (--cores beside it must agree);
