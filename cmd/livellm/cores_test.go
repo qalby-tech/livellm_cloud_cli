@@ -103,11 +103,12 @@ func TestCreateMachineCores(t *testing.T) {
 		"one core in the file":          {[]string{"vm-ubuntu", "-f", one, "--cores", "2"}, "one.json says 1 core and --cores says 2: change one of them"},
 		"cores in words in the file":    {[]string{"vm-ubuntu", "-f", worded, "--cores", "8"}, `worded.json says "cpus": "8" and --cores says 8: change one of them`},
 		"more cores than any count":     {[]string{"vm-ubuntu", "-f", huge, "--cores", "2"}, `huge.json says "cpus": 100000000000000000000 and --cores says 2: change one of them`},
-		"on an app":                     {[]string{"pod", "-f", box, "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
+		"on an app":                     {[]string{"pod", "-f", box, "--cores", "2"}, "--cores goes with a machine"},
 		"on a Desktop App":              {[]string{"desktop", "-f", box, "--cores", "2"}, "--cores goes with a machine"},
 		"on a browser by id":            {[]string{"browser", "--id", "b", "--mixed-speeds"}, "--mixed-speeds goes with a machine"},
-		"on several apps":               {[]string{"apps", "-f", box, "--core-speed", "5700"}, "--core-speed goes with a machine"},
-		"on a database, first flag":     {[]string{"storage", "-f", box, "--mixed-speeds", "--dedicated-cores"}, "--dedicated-cores goes with a machine"},
+		"on several apps":               {[]string{"apps", "-f", box, "--core-speed", "5700"}, "--core-speed goes with one resource"},
+		"dedicated on several apps":     {[]string{"apps", "-f", box, "--dedicated-cores"}, `set "dedicatedCores": true on each service`},
+		"on a database, not dedicated":  {[]string{"storage", "-f", box, "--mixed-speeds", "--dedicated-cores"}, "--mixed-speeds goes with a machine"},
 		// flag reads `--dedicated-cores false` as true and stops at "false"
 		"a yes-or-no after a space": {[]string{"vm-ubuntu", "-f", box, "--dedicated-cores", "false", "--core-speed", "5700"}, `"false" is left over: a yes-or-no flag takes its value after =`},
 	} {
@@ -574,5 +575,95 @@ func TestListShowsCores(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("cores: %v, want %v", got, want)
+	}
+}
+
+// --dedicated-cores on an app, a Desktop App, a database, a browser or a
+// Browser API goes into what is sent, in place of the file's; an object
+// storage has none.
+func TestDedicatedCoresBeyondMachines(t *testing.T) {
+	dir := t.TempDir()
+	web := filepath.Join(dir, "web.json")
+	_ = os.WriteFile(web, []byte(`{"id":"web","image":"nginx","cpu":"1"}`), 0o600)
+	files := filepath.Join(dir, "files.json")
+	_ = os.WriteFile(files, []byte(`{"id":"files","engine":"s3"}`), 0o600)
+	for _, c := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{"an app", []string{"pod", "-f", web, "--dedicated-cores"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": true}},
+		{"an app, shared", []string{"pod", "-f", web, "--dedicated-cores=false"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": false}},
+		{"a Browser API", []string{"controller", "-f", web, "--dedicated-cores"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": true}},
+	} {
+		f := newFakeAPI(t)
+		if err := cmdCreate(c.args); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		w := writesOf(f)
+		if len(w) != 1 || w[0].method != "POST" || w[0].path != "/v1/workloads/"+c.args[0] {
+			t.Fatalf("%s: sent %v", c.name, w)
+		}
+		if got := bodyOf(t, w[0]); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: sent %v, want %v", c.name, got, c.want)
+		}
+	}
+	f := newFakeAPI(t)
+	if err := cmdCreate([]string{"storage", "-f", files, "--dedicated-cores"}); err == nil || !strings.Contains(err.Error(), "an object storage has no dedicated cores") {
+		t.Errorf("object storage: %v", err)
+	}
+	if w := writesOf(f); len(w) != 0 {
+		t.Errorf("object storage: sent %v", w)
+	}
+
+	const ws = `{"spec":{"workloads":[
+		{"id":"web","type":"pod","pod":{"image":"nginx","cpu":"1"}},
+		{"id":"pg","type":"storage","storage":{"engine":"postgres","dedicatedCores":true}},
+		{"id":"files","type":"storage","storage":{"engine":"s3"}},
+		{"id":"desk","type":"desktop","desktop":{"cpu":"2"}}]}}`
+	mem := filepath.Join(dir, "mem.json")
+	_ = os.WriteFile(mem, []byte(`{"pod":{"memory":"1Gi"}}`), 0o600)
+	for _, c := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{"an app, no file", []string{"web", "--dedicated-cores"}, map[string]any{"pod": map[string]any{"dedicatedCores": true}}},
+		{"an app, beside the file's", []string{"web", "-f", mem, "--dedicated-cores"}, map[string]any{"pod": map[string]any{"memory": "1Gi", "dedicatedCores": true}}},
+		{"a database shared again", []string{"pg", "--dedicated-cores=false"}, map[string]any{"storage": map[string]any{"dedicatedCores": false}}},
+		{"a Desktop App", []string{"desk", "--dedicated-cores"}, map[string]any{"desktop": map[string]any{"dedicatedCores": true}}},
+	} {
+		f := newFakeAPI(t)
+		f.answers["GET /v1/workspace"] = answerJSON(ws)
+		_, stderr, err := captured(t, func() error { return cmdSet(c.args) })
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		w := writesOf(f)
+		if len(w) != 1 || w[0].method != "PATCH" || w[0].path != "/v1/workloads/"+c.args[0] {
+			t.Fatalf("%s: sent %v", c.name, w)
+		}
+		if got := bodyOf(t, w[0]); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: sent %v, want %v", c.name, got, c.want)
+		}
+		if strings.Contains(stderr, "next restart") {
+			t.Errorf("%s: a restart note for a pod: %q", c.name, stderr)
+		}
+	}
+	for name, c := range map[string]struct {
+		args []string
+		says string
+	}{
+		"an object storage": {[]string{"files", "--dedicated-cores"}, "an object storage has no dedicated cores"},
+		"a speed on an app": {[]string{"web", "--dedicated-cores", "--core-speed", "5700"}, "--core-speed goes with a machine"},
+	} {
+		f := newFakeAPI(t)
+		f.answers["GET /v1/workspace"] = answerJSON(ws)
+		if err := cmdSet(c.args); err == nil || !strings.Contains(err.Error(), c.says) {
+			t.Errorf("%s: %v, want it to say %q", name, err, c.says)
+		}
+		if w := writesOf(f); len(w) != 0 {
+			t.Errorf("%s: sent %v", name, w)
+		}
 	}
 }

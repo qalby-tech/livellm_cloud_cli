@@ -67,6 +67,9 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              asks for one) unless --mixed-speeds keeps the count when
                                              no one speed has it free; each in place of the file's, but
                                              --cores must agree with its "cpus" (else nothing is made)
+          [--dedicated-cores[=false]]        an app, a Desktop App, a database (not an object storage),
+                                             a browser or a Browser API: all its cpu reserved for it
+                                             on its server (left out: shared, a quarter reserved)
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
@@ -91,6 +94,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              alone too), dedicated cores and their speed take effect at
                                              its next restart; a new --core-speed gives up mixed speeds
                                              kept before
+          [--dedicated-cores[=false]]        an app's, a Desktop App's, a database's, a browser's or a
+                                             Browser API's cores: dedicated, or shared again
   livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again

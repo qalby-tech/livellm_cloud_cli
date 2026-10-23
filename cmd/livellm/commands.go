@@ -1175,7 +1175,7 @@ func cmdSet(args []string) error {
 		return err
 	}
 	if *file == "" && len(changes) == 0 {
-		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, or a machine's --cores, --dedicated-cores, --core-speed or --mixed-speeds")
+		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], or a machine's --cores, --core-speed or --mixed-speeds")
 	}
 	patch := map[string]any{}
 	if *file != "" {
@@ -1200,15 +1200,41 @@ func cmdSet(args []string) error {
 	// holds there: --cores agreeing with its cpus, the others in place of
 	// its values.
 	var w map[string]any
+	kind := ""
 	if len(changes) > 0 {
 		found, err := findWorkload(id)
 		if err != nil {
 			return err
 		}
 		w = found
-		kind, _ := w["type"].(string)
+		kind, _ = w["type"].(string)
 		if err := coresOnMachines(kind, cores); err != nil {
 			return err
+		}
+		if b := sharedCoresBlock(kind); b != "" {
+			// An app's, a Desktop App's, a database's, a browser's or a
+			// Browser API's dedicated cores, in its own block beside what
+			// the file holds there.
+			own, ok := patch[b].(map[string]any)
+			if patch[b] != nil && !ok {
+				return fmt.Errorf("%s: %q isn't an object", *file, b)
+			}
+			if own == nil {
+				own = map[string]any{}
+			}
+			engine := block(w, "storage")["engine"]
+			if e, ok := own["engine"]; ok {
+				engine = e
+			}
+			if err := noObjectStorageCores(cores, engine); err != nil {
+				return err
+			}
+			own["dedicatedCores"] = changes["dedicatedCores"]
+			patch[b] = own
+			if err := patchWorkload(id, patch); err != nil {
+				return err
+			}
+			return print(map[string]any{"changed": id})
 		}
 		vm, ok := patch["vm"].(map[string]any)
 		if patch["vm"] != nil && !ok {
@@ -1236,7 +1262,7 @@ func cmdSet(args []string) error {
 			return coreFloor(kind, block(w, "vm"))
 		}, again)
 	}
-	restartNote(cores, id)
+	restartNote(cores, kind, id)
 	return print(map[string]any{"changed": id})
 }
 

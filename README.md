@@ -355,6 +355,19 @@ livellm create vm-ubuntu -f box.json --dedicated-cores --core-speed 5.7GHz
 livellm set box --dedicated-cores --cores 6                # then: livellm restart box
 ```
 
+An app, a Desktop App, a database (Postgres or Redis), a browser and a Browser
+API have shared cores too, unless `--dedicated-cores` asks for all of their
+`cpu` reserved on the server: shared reserves a quarter of it and may still
+use all of it. Only `--dedicated-cores[=false]` goes with them (their `cpu`
+is in the file), on `create` and `set`; it applies at once. An object storage
+has none. For an app of several services, put `"dedicatedCores": true` on
+each service in the file.
+
+```sh
+livellm create pod -f web.json --dedicated-cores
+livellm set db --dedicated-cores=false                     # shared again
+```
+
 For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
 
 ```sh

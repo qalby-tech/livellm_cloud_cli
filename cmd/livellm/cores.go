@@ -34,7 +34,7 @@ func addCoreFlags(fs *flag.FlagSet) *coreFlags {
 	return &coreFlags{
 		fs:        fs,
 		cores:     fs.Int("cores", 0, "a machine: how many cores (sent as cpus; a file's cpus must agree)"),
-		dedicated: fs.Bool("dedicated-cores", false, "a machine: every core reserved for it on its server (=false: shared again)"),
+		dedicated: fs.Bool("dedicated-cores", false, "a machine, an app, a Desktop App, a database, a browser or a Browser API: all its cores reserved for it on its server (=false: shared again)"),
 		speed:     fs.String("core-speed", "", "a machine with dedicated cores: their clock, 5.7GHz or 5700 (MHz); any: any one speed"),
 		mixed:     fs.Bool("mixed-speeds", false, "a machine with dedicated cores: keep the count, at mixed core speeds"),
 	}
@@ -116,6 +116,13 @@ func withCores(kind string, body map[string]any, file string, c *coreFlags, dedi
 	if err != nil || len(changes) == 0 {
 		return err
 	}
+	if !isMachine(kind) {
+		if err := noObjectStorageCores(c, body["engine"]); err != nil {
+			return err
+		}
+		body["dedicatedCores"] = changes["dedicatedCores"]
+		return nil
+	}
 	if n, ok := changes["cpus"].(int); ok {
 		if err := coresAgree(file, body["cpus"], n); err != nil {
 			return err
@@ -189,14 +196,49 @@ func givesUpMixed(c *coreFlags, vm, stored map[string]any) {
 }
 
 // coresOnMachines refuses the cores flags, and a value they can't take, on
-// anything but a machine, before anything is sent.
+// anything but a machine, before anything is sent: --dedicated-cores alone
+// goes with an app, a Desktop App, a database, a browser and a Browser API
+// too (sharedCoresBlock).
 func coresOnMachines(kind string, c *coreFlags) error {
 	_, first, err := c.changes()
 	if err != nil {
 		return err
 	}
-	if first != "" && !isMachine(kind) {
-		return fmt.Errorf("%s goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows", first)
+	if first == "" || isMachine(kind) {
+		return nil
+	}
+	given := flagsGiven(c.fs)
+	if sharedCoresBlock(kind) != "" {
+		for _, n := range []string{"cores", "core-speed", "mixed-speeds"} {
+			if given[n] {
+				return fmt.Errorf("--%s goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows (an app, a Desktop App, a database, a browser or a Browser API takes --dedicated-cores alone; its cpu is set in the file)", n)
+			}
+		}
+		return nil
+	}
+	if kind == "apps" {
+		return fmt.Errorf("%s goes with one resource: for an app of several services, set \"dedicatedCores\": true on each service in the file", first)
+	}
+	return fmt.Errorf("%s goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows", first)
+}
+
+// sharedCoresBlock is the settings block that holds dedicatedCores on an
+// app, a Desktop App, a database, a browser and a Browser API: shared cores
+// (the default) reserve a quarter of the cpu, dedicated ones all of it. ""
+// for any other kind (a machine's are its vm block's, with more settings).
+func sharedCoresBlock(kind string) string {
+	switch kind {
+	case "pod", "desktop", "storage", "browser", "controller":
+		return kind
+	}
+	return ""
+}
+
+// noObjectStorageCores refuses --dedicated-cores on an object storage
+// (engine s3, as the file or the stored database says): it has none.
+func noObjectStorageCores(c *coreFlags, engine any) error {
+	if flagsGiven(c.fs)["dedicated-cores"] && engine == "s3" {
+		return fmt.Errorf("an object storage has no dedicated cores: --dedicated-cores goes with Postgres and Redis")
 	}
 	return nil
 }
@@ -205,7 +247,10 @@ func coresOnMachines(kind string, c *coreFlags) error {
 // or mixed speeds prints on stderr: each takes effect at its next restart.
 // The count too: a running machine keeps the cores it started with, and
 // nothing restarts it on its own.
-func restartNote(c *coreFlags, id string) {
+func restartNote(c *coreFlags, kind, id string) {
+	if !isMachine(kind) {
+		return
+	}
 	given := flagsGiven(c.fs)
 	if given["cores"] || given["dedicated-cores"] || given["core-speed"] || given["mixed-speeds"] {
 		fmt.Fprintf(os.Stderr, "the cores change at %s's next restart (livellm restart %s)\n", id, id)

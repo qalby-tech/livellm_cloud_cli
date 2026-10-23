@@ -3,6 +3,17 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## Unreleased
+
+- `--dedicated-cores[=false]` on `create` and `set` of an app, a Desktop App,
+  a database (Postgres or Redis), a browser and a Browser API: all of the
+  resource's `cpu` reserved on its server; shared cores, the default, reserve
+  a quarter. It goes into the resource's own block on `set` and applies at
+  once (no restart note). `--cores`, `--core-speed` and `--mixed-speeds` stay
+  a machine's; an object storage and `create apps` refuse the flag before
+  anything is sent (a Composable App's services take `"dedicatedCores": true`
+  in the file).
+
 ## 0.10.0
 
 - `create storage --servers 1|3` makes an object storage (`"engine": "s3"`)
