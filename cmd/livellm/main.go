@@ -215,7 +215,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
       [--host H | --region R]                where it runs (automatic when left out)
       [--reachable-from a,b|'*'|'']          which other resources here may use it (left out: nothing;
                                              its browsers are reached through it)
-      [--dedicated-cores]                    all its cpu reserved for it on its server (left out: shared)
+      [--dedicated-cores]                    all its cpu, whole cores of its server for it alone (left out: shared)
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser
   livellm browser-api remove NAME BROWSER    take a browser out of it
