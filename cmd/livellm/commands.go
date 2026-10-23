@@ -584,6 +584,9 @@ func cmdCreate(args []string) error {
 		if err := withReach(body, reach); err != nil {
 			return err
 		}
+		if err := withCores(kind, body, "", cores, false); err != nil {
+			return err
+		}
 		return createBrowser(body, *locale, *timezone, *profile, *profilePw)
 	}
 	if *file == "" {

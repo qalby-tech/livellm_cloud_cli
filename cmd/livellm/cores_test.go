@@ -595,6 +595,7 @@ func TestDedicatedCoresBeyondMachines(t *testing.T) {
 		{"an app", []string{"pod", "-f", web, "--dedicated-cores"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": true}},
 		{"an app, shared", []string{"pod", "-f", web, "--dedicated-cores=false"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": false}},
 		{"a Browser API", []string{"controller", "-f", web, "--dedicated-cores"}, map[string]any{"id": "web", "image": "nginx", "cpu": "1", "dedicatedCores": true}},
+		{"a browser by id", []string{"browser", "--id", "b", "--dedicated-cores"}, map[string]any{"id": "b", "dedicatedCores": true}},
 	} {
 		f := newFakeAPI(t)
 		if err := cmdCreate(c.args); err != nil {
