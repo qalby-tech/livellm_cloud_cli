@@ -69,9 +69,11 @@ type resource struct {
 	// Servers: an object storage of 3 servers, how many it runs and how
 	// many are ready (it keeps serving with one down).
 	Servers *serverCount `json:"servers,omitempty"`
-	// Cores: a running machine's cores, the clock they run at, or mixed
-	// core speeds with the words for it; absent where the servers list no
-	// speeds.
+	// Cores: a running resource's cores, as the API says them: the CPU
+	// model of the server it runs on, shared or dedicated, and with
+	// dedicated cores only the clock they run at, or mixed core speeds with
+	// the words for it (shared cores have no clock); absent while it isn't
+	// running and from an API that says nothing.
 	Cores *coreStatus `json:"cores,omitempty"`
 }
 
@@ -79,6 +81,7 @@ type coreStatus struct {
 	SpeedMHz int    `json:"speedMHz,omitempty"`
 	Mixed    bool   `json:"mixed,omitempty"`
 	Message  string `json:"message,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 type serverCount struct {

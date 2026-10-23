@@ -45,8 +45,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm hosts                              where resources can run: hosts, regions, free room
                                              (a location takes a host that is ready and schedulable)
   livellm cores                              dedicated cores: the clock speeds a machine may ask for,
-                                             and how many of each fit on one server (servers of one
-                                             speed: none to choose)
+                                             their CPU model and how many of each fit on one server
+                                             (servers of one speed: none to choose)
   livellm devices                            the devices a machine can be given (a GPU, a USB controller):
                                              how many are free, and this workspace's machines that have one
 
@@ -64,15 +64,18 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              not on a database: only what links it reaches it)
           [--database DB]...                 a machine or a Desktop App: let it reach this database
                                              (reach only: nothing goes into the machine)
-          [--cores N] [--dedicated-cores]    a machine: how many cores ("cpus"); dedicated: each one
-          [--core-speed 5.7GHz|5700|any]     reserved for it on its server (left out: shared), all of
-          [--mixed-speeds]                   one clock speed (livellm cores lists them; --core-speed
-                                             asks for one) unless --mixed-speeds keeps the count when
-                                             no one speed has it free; each in place of the file's, but
-                                             --cores must agree with its "cpus" (else nothing is made)
+          [--cores N] [--dedicated-cores]    a machine: how many cores ("cpus"); dedicated: whole cores
+          [--core-speed 5.7GHz|5700|any]     of its server for it alone (left out: shared), in pairs on
+          [--mixed-speeds]                   servers whose cores have 2 threads, each counting as 2 of
+                                             the plan's cores, all of one clock speed (livellm cores
+                                             lists them; --core-speed asks for one) unless --mixed-speeds
+                                             keeps the count when no one speed has it free; each in place
+                                             of the file's, but --cores must agree with its "cpus" (else
+                                             nothing is made)
           [--dedicated-cores[=false]]        an app, a Desktop App, a database (not an object storage),
-                                             a browser or a Browser API: all its cpu reserved for it
-                                             on its server (left out: shared, a quarter reserved)
+                                             a browser or a Browser API: all its cpu, as whole cores of
+                                             its server for it alone (left out: shared, a quarter
+                                             reserved)
           [--devices a,b]                    a machine: the cluster's devices it has (livellm devices lists
                                              them; it then runs where they are); must agree with the
                                              file's "devices"

@@ -326,13 +326,17 @@ livellm restore db BACKUP --as db-copy --host HOST
 livellm create --template shop --id shop-2 --automatic   # automatic, whatever the template says
 ```
 
-A machine's cores are shared unless you ask for dedicated ones: every core
-reserved for it on its server. Where the servers run their cores at different
-clock speeds, a machine's dedicated cores are all of one speed: any one that
-has them free, or the one `--core-speed` asks for (`5.7GHz`, or `5700` in
-MHz; `livellm cores` lists the speeds there are and how many dedicated cores
-of each fit on one server). Where every server runs at one speed there is
-nothing to choose, and `livellm cores` says so. When too few cores of one
+A machine's cores are shared unless you ask for dedicated ones: whole cores of
+its server for it alone, nothing else runs on them. On servers whose cores
+have 2 threads, dedicated cores come in pairs (2, 4, 6…): the API refuses
+another count, and the error gives its words as they are (exit 1). A
+dedicated core counts as 2 of the plan's cores, and as 2 on pay as you go.
+Where the servers run their cores at different clock speeds, a machine's
+dedicated cores are all of one speed: any one that has them free, or the one
+`--core-speed` asks for (`5.7GHz`, or `5700` in MHz; `livellm cores` lists the
+speeds there are, the CPU model of the servers with each and how many
+dedicated cores of each fit on one server). Where every server runs at one
+speed there is nothing to choose, and `livellm cores` says so. When too few cores of one
 speed are free the API says so in its words, and the error says what to run
 again: fewer cores (the cores that fit: `"cpus": N` in a create's file, or in
 a set's file that says them; `--cores N` otherwise) or `--mixed-speeds`, which
@@ -345,8 +349,11 @@ effect at its next restart.
 On `set`, a new `--core-speed` gives up the mixed speeds a machine kept
 (`--mixed-speeds` with it keeps them). A yes-or-no flag takes its value after
 `=`: `--dedicated-cores=false` makes a machine's cores shared again.
-`livellm ls` and `livellm status` show the clock a running machine's cores
-got (`cores: {speedMHz}`), or `cores: {mixed: true, message: "Mixed core speeds"}`.
+`livellm ls` and `livellm status` show a running resource's cores: the CPU
+model of the server it runs on, shared or dedicated (`cores: {model: "Intel
+Core i9-14900K"}`), and for dedicated cores only the clock they got
+(`speedMHz`) or `mixed: true, message: "Mixed core speeds"`. Shared cores
+aren't reserved and have no clock: a shared resource shows its model alone.
 
 ```sh
 livellm cores                                              # the speeds, and what fits
@@ -357,8 +364,9 @@ livellm set box --dedicated-cores --cores 6                # then: livellm resta
 
 An app, a Desktop App, a database (Postgres or Redis), a browser and a Browser
 API have shared cores too, unless `--dedicated-cores` asks for all of their
-`cpu` reserved on the server: shared reserves a quarter of it and may still
-use all of it. Only `--dedicated-cores[=false]` goes with them (their `cpu`
+`cpu` as whole cores of the server for them alone (in pairs where its cores
+have 2 threads, each counting as 2 of the plan's cores): shared reserves a
+quarter of it and may still use all of it. Only `--dedicated-cores[=false]` goes with them (their `cpu`
 is in the file), on `create` and `set`; it applies at once. An object storage
 has none. For an app of several services, put `"dedicatedCores": true` on
 each service in the file.
@@ -428,7 +436,9 @@ what each includes.
 
 Pay as you go lets the workspace go past its plan, and what is above the plan
 is billed; with it off, whatever doesn't fit is refused. Free includes no
-resources, so on Free everything is pay as you go. `--limit DOLLARS`
+resources, so on Free everything is pay as you go. A dedicated core counts as
+2 cores toward the plan and on pay as you go; a shared core as 1
+(`livellm plan catalog` has the prices). `--limit DOLLARS`
 lowers the most pay as you go may cost a month; it can't raise it (a LiveLLM
 that takes no payments has no limit). `plan metered on|off` is the same
 command under its old name.

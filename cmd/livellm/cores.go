@@ -10,9 +10,11 @@ import (
 	"strings"
 )
 
-// A machine's cores: shared (the default), or dedicated, every core reserved
-// for it on its server. Where the servers' cores run at different clock
-// speeds, dedicated cores are all of one speed: --core-speed asks for one
+// A machine's cores: shared (the default), or dedicated, whole cores of its
+// server for it alone (in pairs on servers whose cores have 2 threads: the
+// API judges the count and its refusal is passed on as it says it, never
+// guessed here). Where the servers' cores run at different clock speeds,
+// dedicated cores are all of one speed: --core-speed asks for one
 // (left out, any one speed that has the cores free), and --mixed-speeds
 // keeps the count when no one speed has it. --cores is how many (sent as
 // cpus), and must agree with the file's cpus when it has one (owner,
@@ -34,7 +36,7 @@ func addCoreFlags(fs *flag.FlagSet) *coreFlags {
 	return &coreFlags{
 		fs:        fs,
 		cores:     fs.Int("cores", 0, "a machine: how many cores (sent as cpus; a file's cpus must agree)"),
-		dedicated: fs.Bool("dedicated-cores", false, "a machine, an app, a Desktop App, a database, a browser or a Browser API: all its cores reserved for it on its server (=false: shared again)"),
+		dedicated: fs.Bool("dedicated-cores", false, "a machine, an app, a Desktop App, a database, a browser or a Browser API: whole cores of its server for it alone, in pairs where they have 2 threads (=false: shared again)"),
 		speed:     fs.String("core-speed", "", "a machine with dedicated cores: their clock, 5.7GHz or 5700 (MHz); any: any one speed"),
 		mixed:     fs.Bool("mixed-speeds", false, "a machine with dedicated cores: keep the count, at mixed core speeds"),
 	}
@@ -338,9 +340,10 @@ func coresWord(n int) string {
 	return fmt.Sprintf("%d cores", n)
 }
 
-// cmdCores prints the clock speeds a machine's dedicated cores may ask for
-// and how many of each fit on one server, as the API answers. showSpeed
-// false: the servers run at one speed, and there is none to choose.
+// cmdCores prints the clock speeds a machine's dedicated cores may ask for,
+// the CPU model of the servers with each and how many of each fit on one
+// server (whole cores), as the API answers. showSpeed false: the servers run
+// at one speed, and there is none to choose.
 func cmdCores([]string) error {
 	var out map[string]any
 	if err := call("GET", "/v1/machine-cores", nil, &out); err != nil {

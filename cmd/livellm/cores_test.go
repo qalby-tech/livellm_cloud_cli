@@ -17,6 +17,8 @@ const (
 	msgMixedCard    = "Mixed core speeds"
 	msgSpeedUnknown = "No server this machine may run on has cores at 3 GHz."
 	msgServerFull   = "This server is full: it has no room for this machine."
+	msgPairs        = "Dedicated cores come in pairs on these servers: use 8 or 10."
+	modelI9         = "Intel Core i9-14900K"
 )
 
 func answerStatus(status int, body string) func(http.ResponseWriter, *http.Request, []byte) {
@@ -262,6 +264,10 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","cores":20,"fit":16,"next":"theirs"}`, msgSpeedsMixed, "theirs", true},
 		// Not a cores refusal: untouched.
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
+		// Dedicated cores in pairs is the API's to judge: its words as it
+		// says them, nothing to run again made up here.
+		{422, `{"error":"` + msgPairs + `","code":"dedicated_pairs","workload":"box","cores":9}`, msgPairs, "", true},
+		{422, `{"error":"` + msgPairs + `"}`, msgPairs, "", true},
 	}
 	for _, c := range cases {
 		err := coresNext(problemFrom(c.status, []byte(c.body)), "box", func() int { return 1 }, coresAgain{})
@@ -417,6 +423,28 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 		}
 	}
 
+	// Dedicated cores in pairs: the API's words as it says them, on a create
+	// and a set, with nothing to run again made up here.
+	pairs := answerStatus(422, `{"error":"`+msgPairs+`","code":"dedicated_pairs","workload":"box","cores":9}`)
+	nine := filepath.Join(dir, "nine.json")
+	_ = os.WriteFile(nine, []byte(`{"id":"box","cpus":9}`), 0o600)
+	f = newFakeAPI(t)
+	f.answers["POST /v1/workloads/vm-ubuntu"] = pairs
+	err = cmdCreate([]string{"vm-ubuntu", "-f", nine, "--dedicated-cores"})
+	if err == nil || err.Error() != msgPairs+" (422)" || exitCode(err) != 1 {
+		t.Errorf("create, pairs: %v", err)
+	}
+	f = newFakeAPI(t)
+	f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":8,"dedicatedCores":true}}]}}`)
+	f.answers["PATCH /v1/workloads/box"] = pairs
+	err = cmdSet([]string{"box", "--cores", "9"})
+	if err == nil || err.Error() != msgPairs+" (422)" {
+		t.Errorf("set, pairs: %v", err)
+	}
+	if w := writesOf(f); len(w) != 1 || bodyOf(t, w[0])["vm"].(map[string]any)["cpus"] != float64(9) {
+		t.Errorf("set, pairs: the count is sent as asked: %v", w)
+	}
+
 	// A set of box refused for another machine's cores offers nothing to run
 	// again: --cores or --mixed-speeds would change box.
 	f = newFakeAPI(t)
@@ -522,7 +550,8 @@ func TestCoresRefusalsKeepTheMachinesFloor(t *testing.T) {
 // there is none to choose.
 func TestCores(t *testing.T) {
 	f := newFakeAPI(t)
-	f.answers["GET /v1/machine-cores"] = answerJSON(`{"showSpeed":true,"speeds":[{"speedMHz":5700,"fit":16},{"speedMHz":4400,"fit":16}],"dedicatedFit":16}`)
+	f.answers["GET /v1/machine-cores"] = answerJSON(`{"showSpeed":true,"speeds":[{"speedMHz":5700,"fit":16,"model":"` + modelI9 +
+		`"},{"speedMHz":4400,"fit":16,"model":"` + modelI9 + `"}],"dedicatedFit":16}`)
 	out, stderr, err := captured(t, func() error { return cmdCores(nil) })
 	if err != nil {
 		t.Fatal(err)
@@ -530,6 +559,10 @@ func TestCores(t *testing.T) {
 	got := printed(t, out)
 	if got["showSpeed"] != true || len(got["speeds"].([]any)) != 2 || got["dedicatedFit"] != float64(16) || stderr != "" {
 		t.Errorf("%v %q", got, stderr)
+	}
+	// Each speed's CPU model as the API names it.
+	if s := got["speeds"].([]any)[0].(map[string]any); s["model"] != modelI9 {
+		t.Errorf("speed: %v", s)
 	}
 
 	f.answers["GET /v1/machine-cores"] = answerJSON(`{"showSpeed":false,"speeds":[],"dedicatedFit":8}`)
@@ -547,17 +580,23 @@ func TestCores(t *testing.T) {
 	}
 }
 
-// ls shows a running machine's cores as the status says: their clock, or
-// mixed core speeds with the words for it; nothing where none is said.
+// ls shows a running resource's cores as the status says: the CPU model of
+// its server, shared or dedicated, and for dedicated cores their clock, or
+// mixed core speeds with the words for it; a shared one the model alone (no
+// clock); nothing where none is said.
 func TestListShowsCores(t *testing.T) {
 	f := newFakeAPI(t)
 	f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[
 		{"id":"fast","type":"vm-ubuntu","vm":{"cpus":8,"dedicatedCores":true}},
-		{"id":"desk","type":"vm-ubuntu-desktop","vm":{"cpus":4}},
+		{"id":"desk","type":"vm-ubuntu-desktop","vm":{"cpus":4,"dedicatedCores":true,"mixedSpeeds":true}},
+		{"id":"box","type":"vm-ubuntu","vm":{"cpus":2}},
+		{"id":"api","type":"pod","pod":{"image":"nginx"}},
 		{"id":"web","type":"pod","pod":{"image":"nginx"}}]}}`)
 	f.answers["GET /v1/status"] = answerJSON(`{"workloads":[
-		{"id":"fast","phase":"Running","ready":true,"cores":{"speedMHz":5700}},
+		{"id":"fast","phase":"Running","ready":true,"cores":{"speedMHz":5700,"model":"` + modelI9 + `"}},
 		{"id":"desk","phase":"Running","ready":true,"cores":{"mixed":true,"message":"` + msgMixedCard + `"}},
+		{"id":"box","phase":"Running","ready":true,"cores":{"model":"` + modelI9 + `"}},
+		{"id":"api","phase":"Running","ready":true,"cores":{"model":"` + modelI9 + `"}},
 		{"id":"web","phase":"Running","ready":true}]}`)
 	out, _, err := captured(t, func() error { return cmdList(nil) })
 	if err != nil {
@@ -569,8 +608,10 @@ func TestListShowsCores(t *testing.T) {
 		got[m["id"].(string)] = m["cores"]
 	}
 	want := map[string]any{
-		"fast": map[string]any{"speedMHz": float64(5700)},
+		"fast": map[string]any{"speedMHz": float64(5700), "model": modelI9},
 		"desk": map[string]any{"mixed": true, "message": msgMixedCard},
+		"box":  map[string]any{"model": modelI9},
+		"api":  map[string]any{"model": modelI9},
 		"web":  nil,
 	}
 	if !reflect.DeepEqual(got, want) {
