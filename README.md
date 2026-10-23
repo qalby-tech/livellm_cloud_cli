@@ -515,6 +515,12 @@ a minute, then says it is still waiting). A link that ran out or was denied is
 replaced by a new one. The started sign-in is kept next to the credentials, in
 `credentials.pending.json`, until then.
 
+`livellm` exits 0 when it worked; 2 when someone has to act first (a
+sign-in, a permission, a payment); 4 when the request conflicts with what is
+there (a name taken, a device another machine has, too few cores of one
+speed); and 1 for anything else. The error says what to do next when there is
+something to do.
+
 It is one binary with no dependencies beyond Go's standard library, and it
 talks to the same public API as everything else. `LIVELLM_API_KEY` works
 instead of signing in, for anything unattended; `LIVELLM_API_URL` points it at

@@ -20,7 +20,7 @@ func TestCreateMachineDevicesAndTimeZone(t *testing.T) {
 		return p
 	}
 	box := write("box.json", `{"id":"box","cpus":4}`)
-	gpu := write("gpu.json", `{"id":"box","devices":["rtx5090","station-usb"]}`)
+	gpu := write("gpu.json", `{"id":"box","devices":["rtx5090","usb-1"]}`)
 	zoned := write("zoned.json", `{"id":"box","timeZone":"Europe/Moscow"}`)
 	web := write("web.json", `{"id":"web","image":"nginx"}`)
 
@@ -29,12 +29,12 @@ func TestCreateMachineDevicesAndTimeZone(t *testing.T) {
 		args []string
 		want map[string]any
 	}{
-		{"devices", []string{"vm-windows", "-f", box, "--devices", "rtx5090, station-usb"},
-			map[string]any{"id": "box", "cpus": float64(4), "devices": []any{"rtx5090", "station-usb"}}},
-		{"the file's devices again, in another order", []string{"vm-ubuntu", "-f", gpu, "--devices", "station-usb,rtx5090"},
-			map[string]any{"id": "box", "devices": []any{"station-usb", "rtx5090"}}},
+		{"devices", []string{"vm-windows", "-f", box, "--devices", "rtx5090, usb-1"},
+			map[string]any{"id": "box", "cpus": float64(4), "devices": []any{"rtx5090", "usb-1"}}},
+		{"the file's devices again, in another order", []string{"vm-ubuntu", "-f", gpu, "--devices", "usb-1,rtx5090"},
+			map[string]any{"id": "box", "devices": []any{"usb-1", "rtx5090"}}},
 		{"the file's devices alone", []string{"vm-ubuntu", "-f", gpu},
-			map[string]any{"id": "box", "devices": []any{"rtx5090", "station-usb"}}},
+			map[string]any{"id": "box", "devices": []any{"rtx5090", "usb-1"}}},
 		{"a time zone", []string{"vm-ubuntu-desktop", "-f", box, "--timezone", "Europe/Moscow"},
 			map[string]any{"id": "box", "cpus": float64(4), "timeZone": "Europe/Moscow"}},
 		{"the file's time zone again", []string{"vm-ubuntu", "-f", zoned, "--timezone", "Europe/Moscow"},
@@ -68,8 +68,8 @@ func TestCreateMachineDevicesAndTimeZone(t *testing.T) {
 		args []string
 		says string
 	}{
-		"devices the file disagrees with": {[]string{"vm-ubuntu", "-f", gpu, "--devices", "rtx5090"}, "gpu.json says devices rtx5090, station-usb and --devices says devices rtx5090: change one of them"},
-		"no devices beside the file's":    {[]string{"vm-ubuntu", "-f", gpu, "--devices", ""}, "gpu.json says devices rtx5090, station-usb and --devices says no devices: change one of them"},
+		"devices the file disagrees with": {[]string{"vm-ubuntu", "-f", gpu, "--devices", "rtx5090"}, "gpu.json says devices rtx5090, usb-1 and --devices says devices rtx5090: change one of them"},
+		"no devices beside the file's":    {[]string{"vm-ubuntu", "-f", gpu, "--devices", ""}, "gpu.json says devices rtx5090, usb-1 and --devices says no devices: change one of them"},
 		"a device twice":                  {[]string{"vm-ubuntu", "-f", box, "--devices", "rtx5090,rtx5090"}, "--devices names rtx5090 twice"},
 		"devices on an app":               {[]string{"pod", "-f", web, "--devices", "rtx5090"}, "--devices goes with a machine"},
 		"devices on a browser":            {[]string{"browser", "--id", "b", "--devices", "rtx5090"}, "--devices goes with a machine"},
@@ -102,7 +102,7 @@ func TestSetMachineDevices(t *testing.T) {
 	empty := filepath.Join(dir, "empty.json")
 	_ = os.WriteFile(empty, []byte(`{}`), 0o600)
 	const ws = `{"spec":{"workloads":[
-		{"id":"box","type":"vm-windows","vm":{"cpus":4,"devices":["station-usb"]}},
+		{"id":"box","type":"vm-windows","vm":{"cpus":4,"devices":["usb-1"]}},
 		{"id":"web","type":"pod","pod":{"image":"nginx"}},
 		{"id":"shop","type":"browser","browser":{}}]}}`
 
@@ -115,8 +115,8 @@ func TestSetMachineDevices(t *testing.T) {
 			map[string]any{"vm": map[string]any{"devices": []any{"rtx5090"}}}},
 		{"all taken off", "the devices change at box's next restart", []string{"box", "--devices", ""},
 			map[string]any{"vm": map[string]any{"devices": []any{}}}},
-		{"beside the file's", "the devices change at", []string{"box", "-f", mem, "--devices", "rtx5090,station-usb"},
-			map[string]any{"vm": map[string]any{"memory": "16Gi", "devices": []any{"rtx5090", "station-usb"}}}},
+		{"beside the file's", "the devices change at", []string{"box", "-f", mem, "--devices", "rtx5090,usb-1"},
+			map[string]any{"vm": map[string]any{"memory": "16Gi", "devices": []any{"rtx5090", "usb-1"}}}},
 		{"the file's again", "the devices change at", []string{"box", "-f", gpu, "--devices", "rtx5090"},
 			map[string]any{"vm": map[string]any{"devices": []any{"rtx5090"}}}},
 		{"with the cores", "the cores and the devices change at box's next restart (livellm restart box)", []string{"box", "--devices", "rtx5090", "--dedicated-cores"},
@@ -147,7 +147,7 @@ func TestSetMachineDevices(t *testing.T) {
 		says string
 	}{
 		"devices on an app":               {[]string{"web", "--devices", "rtx5090"}, "--devices goes with a machine"},
-		"devices the file disagrees with": {[]string{"box", "-f", gpu, "--devices", "station-usb"}, "gpu.json says devices rtx5090 and --devices says devices station-usb: change one of them"},
+		"devices the file disagrees with": {[]string{"box", "-f", gpu, "--devices", "usb-1"}, "gpu.json says devices rtx5090 and --devices says devices usb-1: change one of them"},
 		"a machine's time zone":           {[]string{"box", "--timezone", "UTC"}, "a machine's time zone is set when it is made (livellm create vm-windows --timezone ZONE); change it on the machine itself"},
 		"a browser's time zone":           {[]string{"shop", "--timezone", "UTC"}, "a browser's time zone: livellm browser locale shop --timezone ZONE"},
 		"an app's time zone":              {[]string{"web", "--timezone", "UTC"}, "--timezone goes with create of a machine or a browser"},
