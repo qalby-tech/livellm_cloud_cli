@@ -296,11 +296,20 @@ func cmdConnect(args []string) error {
 				SSH string `json:"ssh"`
 			} `json:"workloads"`
 		}
+		ssh := ""
 		if call("GET", "/v1/status", nil, &live) == nil {
 			for _, w := range live.Workloads {
 				if w.ID == id && w.SSH != "" {
 					out["ssh"] = map[string]any{"address": w.SSH}
+					ssh = w.SSH
 				}
+			}
+		}
+		// Its port groups are published on the same address, each port at
+		// its number plus the group's offset.
+		if w, err := findWorkload(id); err == nil {
+			if groups := groupAddresses(block(w, "vm"), ssh); len(groups) > 0 {
+				out["portGroups"] = groups
 			}
 		}
 	}
@@ -519,7 +528,7 @@ func cmdCreate(args []string) error {
 	join := fs.String("join", "", "with apps: add them to this existing app (or stack) in the same step")
 	newID := fs.String("id", "", "a browser: its id, when there is no -f (or in place of the file's)")
 	locale := fs.String("locale", "", "a browser: its language and region, e.g. ru-RU")
-	timezone := fs.String("timezone", "", "a browser: its time zone, e.g. Europe/Moscow")
+	timezone := fs.String("timezone", "", "a browser or a machine: its time zone, e.g. Europe/Moscow (a machine's is set when it is made)")
 	profile := fs.String("profile", "", "a browser: start it with this exported profile (.llcprofile)")
 	profilePw := fs.String("profile-password-env", "", "a browser: the profile file's password, from this variable")
 	engineArg := fs.String("engine", "", "a browser: chrome (the default) or camoufox; fixed once made")
@@ -528,6 +537,7 @@ func cmdCreate(args []string) error {
 	var links repeated
 	fs.Var(&links, "database", "a machine or a Desktop App: let it reach this database (repeat it for more; nothing goes into the machine)")
 	cores := addCoreFlags(fs)
+	devices := addDevicesFlag(fs)
 	_ = fs.Parse(rest)
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
@@ -573,8 +583,16 @@ func cmdCreate(args []string) error {
 	if err := coresOnMachines(kind, cores); err != nil {
 		return err
 	}
-	if kind != "browser" && (*newID != "" || *locale != "" || *timezone != "" || *profile != "" || *profilePw != "") {
+	if devices.given() && !isMachine(kind) {
+		return fmt.Errorf("--devices goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows")
+	}
+	// A machine takes a time zone too (set when it is made); the rest are a
+	// browser's alone.
+	if kind != "browser" && (*newID != "" || *locale != "" || *profile != "" || *profilePw != "") {
 		return fmt.Errorf("--id, --locale, --timezone and --profile go with create browser")
+	}
+	if kind != "browser" && !isMachine(kind) && *timezone != "" {
+		return fmt.Errorf("--timezone goes with create of a browser or a machine (vm-ubuntu, vm-ubuntu-desktop or vm-windows)")
 	}
 	if kind == "browser" && *file == "" && *newID != "" {
 		body := map[string]any{"id": *newID}
@@ -694,6 +712,14 @@ func cmdCreate(args []string) error {
 	}
 	if err := withCores(kind, body, *file, cores, false); err != nil {
 		return err
+	}
+	if isMachine(kind) {
+		if err := withDevices(kind, body, *file, devices); err != nil {
+			return err
+		}
+		if err := withMachineTimeZone(body, *file, *timezone); err != nil {
+			return err
+		}
 	}
 	if kind == "browser" {
 		if *newID != "" {
@@ -1169,6 +1195,8 @@ func cmdSet(args []string) error {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	file := fs.String("f", "", "a JSON file with the settings that change")
 	cores := addCoreFlags(fs)
+	devices := addDevicesFlag(fs)
+	fs.String("timezone", "", "refused: a machine's time zone is set when it is made, a browser's with browser locale")
 	_ = fs.Parse(rest)
 	if err := coresLeftovers(cores); err != nil {
 		return err
@@ -1177,8 +1205,12 @@ func cmdSet(args []string) error {
 	if err != nil {
 		return err
 	}
-	if *file == "" && len(changes) == 0 {
-		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], or a machine's --cores, --core-speed or --mixed-speeds")
+	if flagsGiven(fs)["timezone"] {
+		kind, _ := workloadType(id)
+		return setTimeZoneRefusal(id, kind)
+	}
+	if *file == "" && len(changes) == 0 && !devices.given() {
+		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], or a machine's --cores, --core-speed, --mixed-speeds or --devices")
 	}
 	patch := map[string]any{}
 	if *file != "" {
@@ -1204,7 +1236,7 @@ func cmdSet(args []string) error {
 	// its values.
 	var w map[string]any
 	kind := ""
-	if len(changes) > 0 {
+	if len(changes) > 0 || devices.given() {
 		found, err := findWorkload(id)
 		if err != nil {
 			return err
@@ -1214,6 +1246,11 @@ func cmdSet(args []string) error {
 		if err := coresOnMachines(kind, cores); err != nil {
 			return err
 		}
+		if devices.given() && !isMachine(kind) {
+			return fmt.Errorf("--devices goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows")
+		}
+	}
+	if len(changes) > 0 {
 		if b := sharedCoresBlock(kind); b != "" {
 			// An app's, a Desktop App's, a database's, a browser's or a
 			// Browser API's dedicated cores, in its own block beside what
@@ -1254,6 +1291,19 @@ func cmdSet(args []string) error {
 		givesUpMixed(cores, vm, stored)
 		patch["vm"] = vm
 	}
+	if devices.given() {
+		vm, ok := patch["vm"].(map[string]any)
+		if patch["vm"] != nil && !ok {
+			return fmt.Errorf("%s: \"vm\" isn't an object", *file)
+		}
+		if vm == nil {
+			vm = map[string]any{}
+		}
+		if err := withDevices(kind, vm, *file, devices); err != nil {
+			return err
+		}
+		patch["vm"] = vm
+	}
 	if err := patchWorkload(id, patch); err != nil {
 		return coresNext(err, id, func() int {
 			// A file alone: the machine's kind (fixed when it was made) is
@@ -1265,7 +1315,7 @@ func cmdSet(args []string) error {
 			return coreFloor(kind, block(w, "vm"))
 		}, again)
 	}
-	restartNote(cores, kind, id)
+	restartNote(cores, devices, kind, id)
 	return print(map[string]any{"changed": id})
 }
 
