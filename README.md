@@ -366,6 +366,43 @@ each service in the file.
 ```sh
 livellm create pod -f web.json --dedicated-cores
 livellm set db --dedicated-cores=false                     # shared again
+livellm browser-api create pool --browsers b1,b2 --dedicated-cores
+```
+
+A machine can be given the cluster's own devices, a GPU or a USB controller,
+by id: `livellm devices` lists the ones this workspace's machines may have,
+how many the cluster has and how many are free, and which of your machines
+have them. A device belongs to one machine at a time, and the machine runs on
+the server that has it. `--devices a,b` on `create` and `set` names them (or
+`"devices"` in the file; the two must agree); on `set`, `--devices ''` takes
+them all off, and a set that leaves them out keeps them. They change at the
+machine's next restart.
+
+A machine's time zone is set when it is made: `create … --timezone
+Europe/Moscow` (or `"timeZone"` in the file), else the cluster's. After that
+it is the machine's own: change it on the machine itself (`set` refuses
+`--timezone`).
+
+Ports published together go in a machine's `"portGroups"`: each group keeps
+its ports' numbers inside the machine and is published at those numbers plus
+one offset LiveLLM picks, so the gaps between them stay (a tool that works
+its ports out from one, like Moonlight, still lines up). A mirrored group is
+published at the same numbers inside and out, which LiveLLM picks (`count` of
+them, for a passive FTP range). A group is open to any address unless its
+`allowCIDRs` names some. `livellm connect box` lists where each port is
+published (`portGroups[].ports[].address`). A set that leaves `portGroups`
+out keeps them; `[]` removes them all.
+
+```sh
+livellm devices                                            # what a machine can be given
+livellm create vm-windows -f gpu-box.json --devices rtx5090 --timezone Europe/Berlin
+livellm set gpu-box --devices ''                           # then: livellm restart gpu-box
+echo '{"vm": {"portGroups": [{"name": "stream",
+  "ports": [{"port": 47984}, {"port": 47989}, {"port": 48010},
+            {"port": 47998, "udp": true}, {"port": 47999, "udp": true},
+            {"port": 48000, "udp": true}, {"port": 48002, "udp": true}]}]}}' > groups.json
+livellm set gpu-box -f groups.json
+livellm connect gpu-box                                    # where each port is published
 ```
 
 For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
