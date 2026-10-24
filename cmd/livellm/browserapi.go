@@ -123,7 +123,11 @@ func browserAPICreate(args []string) error {
 	fs.String("host", "", "run it on this host (ids from livellm hosts)")
 	fs.String("region", "", "run it on any host in this region")
 	reach := addReachFlag(fs)
+	cores := addCoreFlags(fs)
 	_ = fs.Parse(rest)
+	if err := coresLeftovers(cores); err != nil {
+		return err
+	}
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
 	}
@@ -136,6 +140,11 @@ func browserAPICreate(args []string) error {
 		return err
 	}
 	if err := withReach(body, reach); err != nil {
+		return err
+	}
+	// --dedicated-cores alone: a Browser API's cpu is all reserved for it,
+	// or a quarter (shared, the default).
+	if err := withCores(browserAPIType, body, "", cores, false); err != nil {
 		return err
 	}
 	if err := call("POST", "/v1/workloads/"+browserAPIType, body, nil); err != nil {

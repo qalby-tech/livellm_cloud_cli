@@ -326,6 +326,97 @@ livellm restore db BACKUP --as db-copy --host HOST
 livellm create --template shop --id shop-2 --automatic   # automatic, whatever the template says
 ```
 
+A machine's cores are shared unless you ask for dedicated ones: whole cores of
+its server for it alone, nothing else runs on them. On servers whose cores
+have 2 threads, dedicated cores come in pairs (2, 4, 6…): the API refuses
+another count, and the error gives its words as they are (exit 1). A
+dedicated core counts as 2 of the plan's cores, and as 2 on pay as you go.
+Where the servers run their cores at different clock speeds, a machine's
+dedicated cores are all of one speed: any one that has them free, or the one
+`--core-speed` asks for (`5.7GHz`, or `5700` in MHz; `livellm cores` lists the
+speeds there are, the CPU model of the servers with each and how many
+dedicated cores of each fit on one server). Where every server runs at one
+speed there is nothing to choose, and `livellm cores` says so. When too few cores of one
+speed are free the API says so in its words, and the error says what to run
+again: fewer cores (the cores that fit: `"cpus": N` in a create's file, or in
+a set's file that says them; `--cores N` otherwise) or `--mixed-speeds`, which
+keeps the count with cores that may run at different speeds. When too few
+whole cores are free to dedicate at all, for a machine or any other kind
+(`Only 4 dedicated cores are available.`, exit 4), the error offers that many
+(a machine's `cpus`, any other kind's `cpu`) or shared cores
+(`--dedicated-cores=false`). The flags go in
+place of the file's values, but `--cores` must agree with the file's `cpus`
+when it says them: `machine.json says 8 cores and --cores says 6: change one
+of them`, and nothing is made. `set` takes the flags without a file too, and a
+machine's cores (`--cores` alone too), dedicated cores and their speed take
+effect at its next restart.
+On `set`, a new `--core-speed` gives up the mixed speeds a machine kept
+(`--mixed-speeds` with it keeps them). A yes-or-no flag takes its value after
+`=`: `--dedicated-cores=false` makes a machine's cores shared again.
+`livellm ls` and `livellm status` show a running resource's cores: the CPU
+model of the server it runs on, shared or dedicated (`cores: {model: "Intel
+Core i9-14900K"}`), and for dedicated cores only the clock they got
+(`speedMHz`) or `mixed: true, message: "Mixed core speeds"`. Shared cores
+aren't reserved and have no clock: a shared resource shows its model alone.
+
+```sh
+livellm cores                                              # the speeds, and what fits
+livellm create vm-ubuntu -f box.json --dedicated-cores     # any one speed
+livellm create vm-ubuntu -f box.json --dedicated-cores --core-speed 5.7GHz
+livellm set box --dedicated-cores --cores 6                # then: livellm restart box
+```
+
+An app, a Desktop App, a database (Postgres or Redis), a browser and a Browser
+API have shared cores too, unless `--dedicated-cores` asks for all of their
+`cpu` as whole cores of the server for them alone (in pairs where its cores
+have 2 threads, each counting as 2 of the plan's cores): shared reserves a
+quarter of it and may still use all of it. Only `--dedicated-cores[=false]` goes with them (their `cpu`
+is in the file), on `create` and `set`; it applies at once. An object storage
+has none. For an app of several services, put `"dedicatedCores": true` on
+each service in the file.
+
+```sh
+livellm create pod -f web.json --dedicated-cores
+livellm set db --dedicated-cores=false                     # shared again
+livellm browser-api create pool --browsers b1,b2 --dedicated-cores
+```
+
+A machine can be given the cluster's own devices, a GPU or a USB controller,
+by id: `livellm devices` lists the ones this workspace's machines may have,
+how many the cluster has and how many are free, and which of your machines
+have them. A device belongs to one machine at a time, and the machine runs on
+the server that has it. `--devices a,b` on `create` and `set` names them (or
+`"devices"` in the file; the two must agree); on `set`, `--devices ''` takes
+them all off, and a set that leaves them out keeps them. They change at the
+machine's next restart.
+
+A machine's time zone is set when it is made: `create … --timezone
+Europe/Moscow` (or `"timeZone"` in the file), else the cluster's. After that
+it is the machine's own: change it on the machine itself (`set` refuses
+`--timezone`, and a file's `"timeZone"`).
+
+Ports published together go in a machine's `"portGroups"`: each group keeps
+its ports' numbers inside the machine and is published at those numbers plus
+one offset LiveLLM picks, so the gaps between them stay (a tool that works
+its ports out from one, like Moonlight, still lines up). A mirrored group is
+published at the same numbers inside and out, which LiveLLM picks (`count` of
+them, for a passive FTP range). A group is open to any address unless its
+`allowCIDRs` names some. `livellm connect box` lists where each port is
+published (`portGroups[].ports[].address`). A set that leaves `portGroups`
+out keeps them; `[]` removes them all.
+
+```sh
+livellm devices                                            # what a machine can be given
+livellm create vm-windows -f gpu-box.json --devices rtx5090 --timezone Europe/Berlin
+livellm set gpu-box --devices ''                           # then: livellm restart gpu-box
+echo '{"vm": {"portGroups": [{"name": "stream",
+  "ports": [{"port": 47984}, {"port": 47989}, {"port": 48010},
+            {"port": 47998, "udp": true}, {"port": 47999, "udp": true},
+            {"port": 48000, "udp": true}, {"port": 48002, "udp": true}]}]}}' > groups.json
+livellm set gpu-box -f groups.json
+livellm connect gpu-box                                    # where each port is published
+```
+
 For scripts that run with nobody there, with `LIVELLM_API_KEY` set:
 
 ```sh
@@ -349,7 +440,9 @@ what each includes.
 
 Pay as you go lets the workspace go past its plan, and what is above the plan
 is billed; with it off, whatever doesn't fit is refused. Free includes no
-resources, so on Free everything is pay as you go. `--limit DOLLARS`
+resources, so on Free everything is pay as you go. A dedicated core counts as
+2 cores toward the plan and on pay as you go; a shared core as 1
+(`livellm plan catalog` has the prices). `--limit DOLLARS`
 lowers the most pay as you go may cost a month; it can't raise it (a LiveLLM
 that takes no payments has no limit). `plan metered on|off` is the same
 command under its old name.
@@ -393,7 +486,10 @@ the workspace. `reach` lists them under `alsoFrom` (`same app`, `links it`,
 `waits for it`, `drives it`, with `through`: what may reach the browser
 through that Browser API, whose inside address takes no key). An app that
 links it or waits for it brings its whole Composable App: the services that
-don't link it themselves name the one that does in `via`. Public addresses
+don't link it themselves name the one that does in `via`. A machine answers
+inside on `<res>` (SSH and its TCP and UDP ports), `<res>-http`,
+`<res>-internal` and `<res>-rdp` by port, and on `<res>-host` (no port): the
+machine itself on every port, TCP and UDP, for what may reach it. Public addresses
 keep their own settings. `livellm connect ID` prints the API's own `inside`
 block. A resource whose setting the platform hasn't written yet shows
 `reachableFrom: null` ("not set yet", and `through: null` on such a Browser
@@ -432,6 +528,12 @@ have pressed Allow, run `login` again to finish the same sign-in (it waits up to
 a minute, then says it is still waiting). A link that ran out or was denied is
 replaced by a new one. The started sign-in is kept next to the credentials, in
 `credentials.pending.json`, until then.
+
+`livellm` exits 0 when it worked; 2 when someone has to act first (a
+sign-in, a permission, a payment); 4 when the request conflicts with what is
+there (a name taken, a device another machine has, too few cores of one
+speed); and 1 for anything else. The error says what to do next when there is
+something to do.
 
 It is one binary with no dependencies beyond Go's standard library, and it
 talks to the same public API as everything else. `LIVELLM_API_KEY` works

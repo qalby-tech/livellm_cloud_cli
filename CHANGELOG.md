@@ -3,6 +3,71 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.11.0
+
+- Dedicated cores on a machine: `create` and `set` take `--cores N` (sent as
+  `cpus`), `--dedicated-cores[=false]` (whole cores of its server for the
+  machine alone; shared, the default, may be slower while the server is busy),
+  `--core-speed 5.7GHz|5700|any` (sent in MHz; `any` is any one speed) and
+  `--mixed-speeds[=false]` (keep the count when no one speed has it free).
+  `--cores` must agree with the file's `cpus` when it says them, else nothing
+  is sent (`machine.json says 8 cores and --cores says 6: change one of
+  them`); the other flags go in place of the file's values. On `set` they
+  take effect at the machine's next restart, which it says, and a new
+  `--core-speed` gives up the mixed speeds a machine kept. A yes-or-no flag
+  with its value after a space is refused (`--dedicated-cores false` turned
+  them on). Needs LiveLLM API 0.77 or newer.
+- Dedicated cores come in pairs on servers whose cores have 2 threads (2, 4,
+  6…; shared cores take any count). The API judges the count: its refusal
+  (422) is passed on in its own words, with nothing made up to run again. A
+  dedicated core counts as 2 of the plan's cores, and as 2 on pay as you go.
+- Too few whole cores free to dedicate, for a machine or any other kind (409
+  `cores_short`, "Only 4 dedicated cores are available.", exit 4): the error
+  offers that many (a machine's `cpus`, any other kind's `cpu`, never 0 nor
+  fewer than the machine runs on) or shared cores (`--dedicated-cores=false`).
+- `livellm cores` lists the clock speeds a machine's dedicated cores may ask
+  for, the CPU model of the servers with each (`model`) and how many of each
+  fit on one server (servers of one speed: none to choose). `ls` shows a
+  running resource's cores as the API says them: the CPU model of its server
+  (`model`), shared or dedicated, and for dedicated cores only the clock they
+  got or that they run at mixed speeds; shared cores have no clock. An API
+  before the release after 0.78 names no model and still says a clock for
+  shared cores.
+- A refusal of a machine's cores says what to run again, in the API's words:
+  the cores that fit (`"cpus": N` in the file, or `--cores N`; never fewer
+  than the machine runs on, 2 for a desktop machine or Windows 11) or
+  `--mixed-speeds`; for a speed no server has, `livellm cores`. A refusal
+  that names another machine, and a full server, offer nothing to run again.
+- `--dedicated-cores[=false]` on `create` and `set` of an app, a Desktop App,
+  a database (Postgres or Redis), a browser and a Browser API (and on
+  `browser-api create`): all of the resource's `cpu`, as whole cores of its
+  server for it alone; shared cores, the default, reserve a quarter. It goes
+  into the resource's own block on `set` and applies at once (no restart
+  note). `--cores`,
+  `--core-speed` and `--mixed-speeds` stay a machine's; an object storage and
+  `create apps` refuse the flag before anything is sent (a Composable App's
+  services take `"dedicatedCores": true` in the file). Needs LiveLLM API 0.78
+  or newer.
+- `livellm devices` lists the cluster's devices (a GPU, a USB controller) a
+  machine of the workspace may be given, how many are free and which of its
+  machines have them. `create` and `set` of a machine take `--devices a,b`
+  (agreeing with the file's `"devices"`); on `set`, `--devices ''` takes them
+  all off, and they change at the machine's next restart. A device this
+  workspace isn't offered, or one another machine has, is refused in the
+  API's words with what to do next. Needs LiveLLM API 0.74 or newer.
+- `create` of a machine takes `--timezone ZONE` (sent as `timeZone`, agreeing
+  with the file's): the machine's time zone when it is made, else the
+  cluster's. `set` refuses `--timezone`, and a file's `"vm"` `"timeZone"`,
+  with where it changes instead: on the machine itself, or `browser locale`
+  for a browser. Needs LiveLLM API 0.75
+  or newer.
+- `connect` of a machine lists where its port groups (`"portGroups"` in the
+  file, LiveLLM API 0.76 or newer) are published: each port's number inside,
+  its published number (plus the group's offset) and its address on the
+  machine's own host.
+- `reach` lists a machine's `<res>-host` inside address (the machine itself
+  on every port, TCP and UDP), after SSH, as the API lists it.
+
 ## 0.10.0
 
 - `create storage --servers 1|3` makes an object storage (`"engine": "s3"`)

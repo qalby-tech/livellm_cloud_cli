@@ -26,7 +26,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm install ID                         a new machine's way to its first boot
   livellm database ID                        a database's instances, live
   livellm logs ID [--lines N]                recent logs, and restarts
-  livellm connect ID [--tool TOOL]           how to reach it (a Camoufox browser: its Playwright address)
+  livellm connect ID [--tool TOOL]           how to reach it (a Camoufox browser: its Playwright address;
+                                             a machine: its SSH address, and where its port groups are)
           [--screen-width PX] [--format png|jpeg]
   livellm exec ID "COMMAND"                  run a command on a machine (PowerShell on Windows)
           [--session S] [--timeout N]   (waits until it ends, up to --timeout)
@@ -43,6 +44,11 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm reservations                       machines agents are holding
   livellm hosts                              where resources can run: hosts, regions, free room
                                              (a location takes a host that is ready and schedulable)
+  livellm cores                              dedicated cores: the clock speeds a machine may ask for,
+                                             their CPU model and how many of each fit on one server
+                                             (servers of one speed: none to choose)
+  livellm devices                            the devices a machine can be given (a GPU, a USB controller):
+                                             how many are free, and this workspace's machines that have one
 
   livellm create TYPE -f FILE                create a resource from a JSON file
                                              a database (storage): "engine": "postgres", "redis" or
@@ -58,6 +64,25 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              not on a database: only what links it reaches it)
           [--database DB]...                 a machine or a Desktop App: let it reach this database
                                              (reach only: nothing goes into the machine)
+          [--cores N] [--dedicated-cores]    a machine: how many cores ("cpus"); dedicated: whole cores
+          [--core-speed 5.7GHz|5700|any]     of its server for it alone (left out: shared), in pairs on
+          [--mixed-speeds]                   servers whose cores have 2 threads, each counting as 2 of
+                                             the plan's cores, all of one clock speed (livellm cores
+                                             lists them; --core-speed asks for one) unless --mixed-speeds
+                                             keeps the count when no one speed has it free; each in place
+                                             of the file's, but --cores must agree with its "cpus" (else
+                                             nothing is made)
+          [--dedicated-cores[=false]]        an app, a Desktop App, a database (not an object storage),
+                                             a browser or a Browser API: all its cpu, as whole cores of
+                                             its server for it alone (left out: shared, a quarter
+                                             reserved)
+          [--devices a,b]                    a machine: the cluster's devices it has (livellm devices lists
+                                             them; it then runs where they are); must agree with the
+                                             file's "devices"
+          [--timezone Europe/Moscow]         a machine: its time zone, set when it is made (left out: the
+                                             cluster's); change it on the machine itself afterwards
+                                             a machine's port groups go in the file: "portGroups"
+                                             (livellm connect ID says where they are published)
   livellm create apps -f FILE                an app of several services and its databases, at once:
                                              {"apps": [...], "databases": [...]} (links in each app's "databases")
           [--join APP]                       add them to an existing app: they take its stack (one on its own gets
@@ -76,6 +101,16 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm stop ID                            stop one; its disks are kept
   livellm start ID                           start a stopped one again
   livellm set ID -f FILE                     change some settings (only what the file holds)
+          [--cores N] [--dedicated-cores[=false]] [--core-speed S] [--mixed-speeds[=false]]
+                                             a machine's cores, as with create (-f optional; --cores
+                                             must agree with the file's "vm" "cpus"); its cores (--cores
+                                             alone too), dedicated cores and their speed take effect at
+                                             its next restart; a new --core-speed gives up mixed speeds
+                                             kept before
+          [--dedicated-cores[=false]]        an app's, a Desktop App's, a database's, a browser's or a
+                                             Browser API's cores: dedicated, or shared again
+          [--devices a,b|'']                 a machine's devices ('' takes them all off; left out: kept),
+                                             at its next restart; must agree with the file's "vm" "devices"
   livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
@@ -180,6 +215,7 @@ const usage = `livellm — your machines, browsers, apps and databases.
       [--host H | --region R]                where it runs (automatic when left out)
       [--reachable-from a,b|'*'|'']          which other resources here may use it (left out: nothing;
                                              its browsers are reached through it)
+      [--dedicated-cores]                    all its cpu, whole cores of its server for it alone (left out: shared)
   livellm browser-api show NAME              the browsers it drives, and their tabs
   livellm browser-api add NAME BROWSER       have it drive one more browser
   livellm browser-api remove NAME BROWSER    take a browser out of it
@@ -233,6 +269,10 @@ func main() {
 		err = cmdReservations(args)
 	case "hosts", "fleet":
 		err = cmdHosts(args)
+	case "cores", "machine-cores":
+		err = cmdCores(args)
+	case "devices", "machine-devices":
+		err = cmdDevices(args)
 	case "wait":
 		err = cmdWait(args)
 	case "database", "db":
@@ -298,7 +338,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		err = billingNext(networkNext(engineNext(err)))
+		err = machineNext(billingNext(networkNext(engineNext(err))))
 		fmt.Fprintln(os.Stderr, "livellm: "+err.Error())
 		os.Exit(exitCode(err))
 	}

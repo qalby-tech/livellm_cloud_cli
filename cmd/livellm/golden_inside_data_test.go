@@ -730,6 +730,9 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
       "port": 22
     },
     {
+      "host": "ws-box-host"
+    },
+    {
       "host": "ws-box-http",
       "name": "web",
       "port": 8080
@@ -815,6 +818,9 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
       "host": "ws-win",
       "name": "ssh",
       "port": 22
+    },
+    {
+      "host": "ws-win-host"
     },
     {
       "host": "ws-win-rdp",
