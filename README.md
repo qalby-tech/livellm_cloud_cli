@@ -340,7 +340,11 @@ speed there is nothing to choose, and `livellm cores` says so. When too few core
 speed are free the API says so in its words, and the error says what to run
 again: fewer cores (the cores that fit: `"cpus": N` in a create's file, or in
 a set's file that says them; `--cores N` otherwise) or `--mixed-speeds`, which
-keeps the count with cores that may run at different speeds. The flags go in
+keeps the count with cores that may run at different speeds. When too few
+whole cores are free to dedicate at all, for a machine or any other kind
+(`Only 4 dedicated cores are available.`, exit 4), the error offers that many
+(a machine's `cpus`, any other kind's `cpu`) or shared cores
+(`--dedicated-cores=false`). The flags go in
 place of the file's values, but `--cores` must agree with the file's `cpus`
 when it says them: `machine.json says 8 cores and --cores says 6: change one
 of them`, and nothing is made. `set` takes the flags without a file too, and a

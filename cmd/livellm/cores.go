@@ -245,9 +245,10 @@ func noObjectStorageCores(c *coreFlags, engine any) error {
 	return nil
 }
 
-// The refusals of a machine's cores, by the API's code. Their words are the
-// API's own; these carry the numbers too.
-var coresCodes = map[string]bool{"core_speed_short": true, "core_speeds_mixed": true, "core_speed_unknown": true}
+// The refusals of a machine's cores, and of too few whole cores free to
+// dedicate to a resource of any kind (cores_short), by the API's code. Their
+// words are the API's own; these carry the numbers too.
+var coresCodes = map[string]bool{"core_speed_short": true, "core_speeds_mixed": true, "core_speed_unknown": true, "cores_short": true}
 
 // coresRefusal is what a cores refusal carries beside its words: the
 // machine, the cores it asked for, how many of one speed fit (of the clock
@@ -289,6 +290,13 @@ func coresNext(err error, machine string, floor func() int, again coresAgain) er
 		}
 	case "core_speed_unknown":
 		p.Next = "livellm cores lists the speeds there are; or run it again with --core-speed any (any one speed)"
+	case "cores_short":
+		// Too few whole cores free to dedicate: mixed speeds don't help,
+		// shared cores (or fewer dedicated ones) do.
+		p.Next = "shared cores: run it again with --dedicated-cores=false"
+		if c.Fit > 0 && c.Fit >= floor() {
+			p.Next = fmt.Sprintf("use %s dedicated: %s; or %s", coresWord(c.Fit), again.useAny(c.Fit), p.Next)
+		}
 	}
 	return err
 }
@@ -301,6 +309,31 @@ func coresNext(err error, machine string, floor func() int, again coresAgain) er
 type coresAgain struct {
 	file, block string
 	flag        bool
+	// kindBlock is the block of the resource's kind ("vm" for a machine,
+	// sharedCoresBlock for the others; "" not known), and flatBlock that a
+	// create's file holds it flat.
+	kindBlock string
+	flatBlock bool
+}
+
+// useAny is how to run the command again with n dedicated cores on a
+// resource of any kind: a machine's "cpus" (use), any other kind's "cpu" in
+// its block (kindBlock), or, the kind not known, both named.
+func (a coresAgain) useAny(n int) string {
+	switch {
+	case a.kindBlock == "vm":
+		return a.use(n)
+	case a.kindBlock != "":
+		in := "the file"
+		if a.file != "" {
+			in = a.file
+		}
+		if a.flatBlock {
+			return fmt.Sprintf(`set "cpu": "%d" in %s and run it again`, n, in)
+		}
+		return fmt.Sprintf(`set "cpu": "%d" in %s's %q block and run it again`, n, in, a.kindBlock)
+	}
+	return fmt.Sprintf(`set "cpus": %d (a machine) or "cpu": "%d" (any other kind) and run it again`, n, n)
 }
 
 // use is how to run the command again with n cores.

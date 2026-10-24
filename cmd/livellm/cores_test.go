@@ -264,6 +264,13 @@ func TestCoresRefusalsSayWhatNext(t *testing.T) {
 		{409, `{"error":"` + msgSpeedsMixed + `","code":"core_speeds_mixed","cores":20,"fit":16,"next":"theirs"}`, msgSpeedsMixed, "theirs", true},
 		// Not a cores refusal: untouched.
 		{409, `{"error":"workload box already exists"}`, "already exists", "", true},
+		// Too few whole cores free to dedicate: the count that fits, or
+		// shared cores; never mixed speeds, never 0.
+		{409, `{"error":"Only 4 dedicated cores are available.","code":"cores_short","workload":"box","cores":6,"fit":4}`,
+			"Only 4 dedicated cores", `use 4 cores dedicated: set "cpus": 4 (a machine) or "cpu": "4" (any other kind) and run it again; or shared cores: run it again with --dedicated-cores=false`, false},
+		{409, `{"error":"No dedicated cores are available.","code":"cores_short","workload":"box","cores":2,"fit":0}`,
+			"No dedicated cores", "shared cores: run it again with --dedicated-cores=false", true},
+		{409, `{"error":"Only 4 dedicated cores are available.","code":"cores_short","workload":"other","cores":6,"fit":4}`, "Only 4 dedicated cores", "", true},
 		// Dedicated cores in pairs is the API's to judge: its words as it
 		// says them, nothing to run again made up here.
 		{422, `{"error":"` + msgPairs + `","code":"cores_pairs","workload":"box","cores":9,"choices":[8,10]}`, msgPairs, "", true},
@@ -380,6 +387,32 @@ func TestCreateAndSetRefusedForCores(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), `use 6 cores: set "cpus": 6 in `+file+" and run it again with --cores 6; or") {
 			t.Errorf("create %s --cores 8: %v", file, err)
 		}
+	}
+
+	// Too few whole cores free to dedicate: a machine's cpus, an app's cpu
+	// (flat in a create's file), or shared cores.
+	coresShort := `{"error":"Only 4 dedicated cores are available.","code":"cores_short","workload":"box","cores":8,"fit":4}`
+	f = newFakeAPI(t)
+	f.answers["POST /v1/workloads/vm-ubuntu"] = answerStatus(409, coresShort)
+	err = cmdCreate([]string{"vm-ubuntu", "-f", box, "--dedicated-cores"})
+	if err == nil || !strings.Contains(err.Error(), `Only 4 dedicated cores are available. (409) — use 4 cores dedicated: set "cpus": 4 in `+box+
+		` and run it again; or shared cores: run it again with --dedicated-cores=false`) || exitCode(err) != 4 {
+		t.Errorf("create, cores_short: %v", err)
+	}
+	app := filepath.Join(dir, "app.json")
+	_ = os.WriteFile(app, []byte(`{"id":"box","image":"nginx","cpu":"8"}`), 0o600)
+	f = newFakeAPI(t)
+	f.answers["POST /v1/workloads/pod"] = answerStatus(409, coresShort)
+	err = cmdCreate([]string{"pod", "-f", app, "--dedicated-cores"})
+	if err == nil || !strings.Contains(err.Error(), `use 4 cores dedicated: set "cpu": "4" in `+app+` and run it again; or shared cores`) {
+		t.Errorf("create app, cores_short: %v", err)
+	}
+	f = newFakeAPI(t)
+	f.answers["GET /v1/workspace"] = answerJSON(`{"spec":{"workloads":[{"id":"box","type":"vm-ubuntu","vm":{"cpus":8}}]}}`)
+	f.answers["PATCH /v1/workloads/box"] = answerStatus(409, coresShort)
+	err = cmdSet([]string{"box", "--dedicated-cores"})
+	if err == nil || !strings.Contains(err.Error(), "use 4 cores dedicated: run it again with --cores 4; or shared cores: run it again with --dedicated-cores=false") {
+		t.Errorf("set, cores_short: %v", err)
 	}
 
 	// The API trims the id it makes and names the machine so: still this one.

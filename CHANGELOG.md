@@ -21,6 +21,10 @@ platform and attaches them to the GitHub release.
   6…; shared cores take any count). The API judges the count: its refusal
   (422) is passed on in its own words, with nothing made up to run again. A
   dedicated core counts as 2 of the plan's cores, and as 2 on pay as you go.
+- Too few whole cores free to dedicate, for a machine or any other kind (409
+  `cores_short`, "Only 4 dedicated cores are available.", exit 4): the error
+  offers that many (a machine's `cpus`, any other kind's `cpu`, never 0 nor
+  fewer than the machine runs on) or shared cores (`--dedicated-cores=false`).
 - `livellm cores` lists the clock speeds a machine's dedicated cores may ask
   for, the CPU model of the servers with each (`model`) and how many of each
   fit on one server (servers of one speed: none to choose). `ls` shows a

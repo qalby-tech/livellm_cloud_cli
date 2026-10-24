@@ -737,7 +737,10 @@ func cmdCreate(args []string) error {
 		// The API names the machine by the id it made, trimmed.
 		id, _ := body["id"].(string)
 		// The cores that fit are said in the file, which --cores agrees with.
-		again := coresAgain{file: *file, flag: flagsGiven(fs)["cores"]}
+		again := coresAgain{file: *file, flag: flagsGiven(fs)["cores"], kindBlock: sharedCoresBlock(kind), flatBlock: true}
+		if isMachine(kind) {
+			again.kindBlock = "vm"
+		}
 		return coresNext(err, strings.TrimSpace(id), func() int { return coreFloor(kind, body) }, again)
 	}
 	return print(map[string]any{"created": body["id"], "type": kind})
@@ -1313,6 +1316,14 @@ func cmdSet(args []string) error {
 			return err
 		}
 		patch["vm"] = vm
+	}
+	// The kind's block, as the file and the flags name it (cores_short asks for the
+	// count in it).
+	for _, b := range []string{"vm", "pod", "desktop", "storage", "browser", "controller"} {
+		if _, ok := patch[b].(map[string]any); ok {
+			again.kindBlock = b
+			break
+		}
 	}
 	if err := patchWorkload(id, patch); err != nil {
 		return coresNext(err, id, func() int {
