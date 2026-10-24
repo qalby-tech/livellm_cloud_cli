@@ -373,7 +373,10 @@ have 2 threads, each counting as 2 of the plan's cores): shared reserves a
 quarter of it and may still use all of it. Only `--dedicated-cores[=false]` goes with them (their `cpu`
 is in the file), on `create` and `set`; it applies at once. An object storage
 has none. For an app of several services, put `"dedicatedCores": true` on
-each service in the file.
+each service in the file. Dedicated cores work with one copy for now: an app
+of 2 or more `replicas`, or a database of 3 `instances`, that asks for them is
+refused in the API's words (`Dedicated cores work with one copy for now: use 1
+copy, or shared cores.`, exit 1).
 
 ```sh
 livellm create pod -f web.json --dedicated-cores
@@ -531,8 +534,10 @@ replaced by a new one. The started sign-in is kept next to the credentials, in
 
 `livellm` exits 0 when it worked; 2 when someone has to act first (a
 sign-in, a permission, a payment); 4 when the request conflicts with what is
-there (a name taken, a device another machine has, too few cores of one
-speed); and 1 for anything else. The error says what to do next when there is
+there (a name taken, a device another machine has, and every cores refusal
+the API answers with 409: too few cores of one speed, `core_speed_short` and
+`core_speeds_mixed`, or too few whole cores free to dedicate, `cores_short`);
+and 1 for anything else, a value the API refuses (422) included. The error says what to do next when there is
 something to do.
 
 It is one binary with no dependencies beyond Go's standard library, and it

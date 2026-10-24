@@ -21,6 +21,14 @@ platform and attaches them to the GitHub release.
   6…; shared cores take any count). The API judges the count: its refusal
   (422) is passed on in its own words, with nothing made up to run again. A
   dedicated core counts as 2 of the plan's cores, and as 2 on pay as you go.
+- Dedicated cores work with one copy for now: an app of 2 or more replicas or
+  a database of 3 instances that asks for them is refused (422
+  `dedicated_one_copy`, "Dedicated cores work with one copy for now: use 1
+  copy, or shared cores.", exit 1), passed on in the API's words. Needs
+  LiveLLM API 0.79.
+- Every cores refusal the API answers with 409 (`core_speed_short`,
+  `core_speeds_mixed`, `cores_short`) exits 4, as any conflict with what is
+  there does; the README's exit codes say so.
 - Too few whole cores free to dedicate, for a machine or any other kind (409
   `cores_short`, "Only 4 dedicated cores are available.", exit 4): the error
   offers that many (a machine's `cpus`, any other kind's `cpu`, never 0 nor
@@ -31,8 +39,7 @@ platform and attaches them to the GitHub release.
   running resource's cores as the API says them: the CPU model of its server
   (`model`), shared or dedicated, and for dedicated cores only the clock they
   got or that they run at mixed speeds; shared cores have no clock. An API
-  before the release after 0.78 names no model and still says a clock for
-  shared cores.
+  before 0.79 names no model and still says a clock for shared cores.
 - A refusal of a machine's cores says what to run again, in the API's words:
   the cores that fit (`"cpus": N` in the file, or `--cores N`; never fewer
   than the machine runs on, 2 for a desktop machine or Windows 11) or
