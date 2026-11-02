@@ -398,6 +398,21 @@ Europe/Moscow` (or `"timeZone"` in the file), else the cluster's. After that
 it is the machine's own: change it on the machine itself (`set` refuses
 `--timezone`, and a file's `"timeZone"`).
 
+Where the platform offers a private network, every new machine gets a private
+address: a fixed address of its own on its second network card, in a network
+only this workspace's machines share. Machines of the workspace reach each
+other there on any port, as `reach` allows. `create … --private-address
+172.16.0.12` (or `"privateAddress"` in the file) chooses it, else it is the
+next free one; `--no-private-network` (or `"privateNetwork": false`) makes the
+machine without one. The two don't go together, and each must agree with the
+file. It is fixed for the machine's life and freed when the machine is
+deleted: `set` refuses both flags, and a file that changes it is refused
+(`private_address_fixed`). `ls` and `connect` print a machine's
+`privateAddress` (`connect` its card's `privateMac` too), and `whoami` the
+workspace's `privateNetwork`: its `range` and `gateway`. An address outside
+the range, one of its first ten or its last, or one another machine has is
+refused in the API's words.
+
 Ports published together go in a machine's `"portGroups"`: each group keeps
 its ports' numbers inside the machine and is published at those numbers plus
 one offset LiveLLM picks, so the gaps between them stay (a tool that works
@@ -411,6 +426,8 @@ out keeps them; `[]` removes them all.
 ```sh
 livellm devices                                            # what a machine can be given
 livellm create vm-windows -f gpu-box.json --devices rtx5090 --timezone Europe/Berlin
+livellm create vm-ubuntu -f db-box.json --private-address 172.16.0.20   # its private address
+livellm create vm-ubuntu -f solo.json --no-private-network                # none
 livellm set gpu-box --devices ''                           # then: livellm restart gpu-box
 echo '{"vm": {"portGroups": [{"name": "stream",
   "ports": [{"port": 47984}, {"port": 47989}, {"port": 48010},
@@ -492,7 +509,8 @@ links it or waits for it brings its whole Composable App: the services that
 don't link it themselves name the one that does in `via`. A machine answers
 inside on `<res>` (SSH and its TCP and UDP ports), `<res>-http`,
 `<res>-internal` and `<res>-rdp` by port, and on `<res>-host` (no port): the
-machine itself on every port, TCP and UDP, for what may reach it. Public addresses
+machine itself on every port, TCP and UDP, for what may reach it, and, with
+one, on its private address (`"private": true`), on every port too. Public addresses
 keep their own settings. `livellm connect ID` prints the API's own `inside`
 block. A resource whose setting the platform hasn't written yet shows
 `reachableFrom: null` ("not set yet", and `through: null` on such a Browser
@@ -536,7 +554,10 @@ replaced by a new one. The started sign-in is kept next to the credentials, in
 sign-in, a permission, a payment); 4 when the request conflicts with what is
 there (a name taken, a device another machine has, and every cores refusal
 the API answers with 409: too few cores of one speed, `core_speed_short` and
-`core_speeds_mixed`, or too few whole cores free to dedicate, `cores_short`);
+`core_speeds_mixed`, or too few whole cores free to dedicate, `cores_short`;
+a private address another machine has or one still being freed, and no
+private address left, `private_address_taken`, `private_address_releasing`
+and `private_range_full`);
 and 1 for anything else, a value the API refuses (422) included. The error says what to do next when there is
 something to do.
 

@@ -3,6 +3,30 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.12.0
+
+- A machine's private address: `create` of a machine takes
+  `--private-address 172.16.0.12` (sent as `privateAddress`) to choose it, or
+  `--no-private-network` (sent as `privateNetwork: false`) to make it without
+  one; left out, neither is sent and the machine gets the next free one
+  wherever the platform offers the private network. The two together, either
+  on another kind, an empty `--private-address`, a flag disagreeing with the
+  file's `privateAddress` or `privateNetwork`, and `--no-private-network
+  false` (the value after a space) are refused before anything is sent. It is
+  fixed once made: `set` refuses both flags.
+- `ls` and `connect` print a machine's `privateAddress` (`connect` its private
+  card's `privateMac` too), absent on a machine without one; `whoami` prints
+  the workspace's `privateNetwork` (`range`, `gateway`), absent where there is
+  none; `reach` lists a machine's private address among its inside addresses,
+  last and marked `"private": true`, as the API lists it.
+- The API's refusals of a private address are passed on in its words, with
+  what to run next where there is something: leave `--private-address` out for
+  the next free one (outside the range, reserved or taken), leave it out where
+  there is no private network, `--no-private-network` when none is left, and a
+  file that changes a fixed address leaves `privateAddress` and
+  `privateNetwork` out. A taken address, one being freed, and a full range
+  (409) exit 4; the others (422) exit 1. Needs LiveLLM API 0.90 or newer.
+
 ## 0.11.0
 
 - Dedicated cores on a machine: `create` and `set` take `--cores N` (sent as
