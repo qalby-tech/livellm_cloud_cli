@@ -122,7 +122,7 @@ func TestPrivateAddressRefusalsSayWhatNext(t *testing.T) {
 		exit       int
 	}{
 		{422, `{"error":"workload box: this workspace has no private network","code":"private_network_not_offered"}`,
-			`leave --private-address (and the file's "privateAddress") out: the machine is made without one`, 1},
+			`leave --private-address (and the file's "privateAddress" and "privateNetwork": true) out: the machine is made without one`, 1},
 		{422, `{"error":"workload box: privateAddress \"172.16.0\" is not one IPv4 address","code":"private_address_invalid"}`, "", 1},
 		{422, `{"error":"the private address 10.0.0.12 is outside this workspace's range 172.16.0.0/16","code":"private_address_outside"}`,
 			"leave --private-address out for the next free one", 1},

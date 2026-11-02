@@ -99,7 +99,7 @@ func setPrivateRefusal(kind string) error {
 // words already name the range, the holder, or to try again in a minute).
 // A taken address stays its machine's: never delete one to free it.
 var privateNexts = map[string]string{
-	"private_network_not_offered": "leave --private-address (and the file's \"privateAddress\") out: the machine is made without one",
+	"private_network_not_offered": "leave --private-address (and the file's \"privateAddress\" and \"privateNetwork\": true) out: the machine is made without one",
 	"private_address_outside":     "leave --private-address out for the next free one",
 	"private_address_reserved":    "leave --private-address out for the next free one",
 	"private_address_taken":       "pick another (livellm ls shows the machines' private addresses), or leave --private-address out for the next free one",

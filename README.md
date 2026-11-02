@@ -398,8 +398,8 @@ Europe/Moscow` (or `"timeZone"` in the file), else the cluster's. After that
 it is the machine's own: change it on the machine itself (`set` refuses
 `--timezone`, and a file's `"timeZone"`).
 
-Where the platform offers a private network, every new machine gets a private
-address: a fixed address of its own on its second network card, in a network
+Where the platform offers a private network, every new machine (a Windows one
+where the platform says so) gets a private address: a fixed address of its own on its second network card, in a network
 only this workspace's machines share. Machines of the workspace reach each
 other there on any port, as `reach` allows. `create … --private-address
 172.16.0.12` (or `"privateAddress"` in the file) chooses it, else it is the
