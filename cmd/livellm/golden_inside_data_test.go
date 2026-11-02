@@ -752,6 +752,10 @@ PATCH /v1/workloads/edge {"reachableFrom":["*"]}
       "host": "ws-box-internal",
       "name": "etcd",
       "port": 2380
+    },
+    {
+      "host": "172.16.0.12",
+      "private": true
     }
   ],
   "alsoFrom": [],

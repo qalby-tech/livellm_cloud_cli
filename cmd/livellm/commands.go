@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/url"
@@ -31,11 +32,20 @@ func cmdWhoami([]string) error {
 	var ws struct {
 		Name string `json:"name"`
 		Plan string `json:"plan"`
+		// PrivateNetwork is the network the workspace's machines with a
+		// private address share; null where the cluster offers none.
+		PrivateNetwork *struct {
+			Range   string `json:"range"`
+			Gateway string `json:"gateway,omitempty"`
+		} `json:"privateNetwork"`
 	}
 	if err := call("GET", "/v1/workspace", nil, &ws); err != nil {
 		return err
 	}
 	out := map[string]any{"workspace": ws.Name, "plan": ws.Plan}
+	if ws.PrivateNetwork != nil && ws.PrivateNetwork.Range != "" {
+		out["privateNetwork"] = ws.PrivateNetwork
+	}
 	if os.Getenv("LIVELLM_API_KEY") != "" {
 		out["signedInWith"] = "api key"
 	} else if c, _ := loadCreds(); c != nil {
@@ -75,6 +85,9 @@ type resource struct {
 	// the words for it (shared cores have no clock); absent while it isn't
 	// running and from an API that says nothing.
 	Cores *coreStatus `json:"cores,omitempty"`
+	// PrivateAddress: a machine's own fixed address in the workspace's
+	// private network, absent on one without.
+	PrivateAddress string `json:"privateAddress,omitempty"`
 }
 
 type coreStatus struct {
@@ -107,7 +120,8 @@ func resources() ([]resource, error) {
 					Databases []map[string]any `json:"databases"`
 				} `json:"pod"`
 				VM *struct {
-					Databases []map[string]any `json:"databases"`
+					Databases      []map[string]any `json:"databases"`
+					PrivateAddress string           `json:"privateAddress"`
 				} `json:"vm"`
 				Desktop *struct {
 					Databases []map[string]any `json:"databases"`
@@ -160,7 +174,7 @@ func resources() ([]resource, error) {
 		case w.Pod != nil:
 			r.Databases = w.Pod.Databases
 		case w.VM != nil:
-			r.Databases = w.VM.Databases
+			r.Databases, r.PrivateAddress = w.VM.Databases, w.VM.PrivateAddress
 		case w.Desktop != nil:
 			r.Databases = w.Desktop.Databases
 		}
@@ -313,6 +327,15 @@ func cmdConnect(args []string) error {
 		if w, err := findWorkload(id); err == nil {
 			if groups := groupAddresses(block(w, "vm"), ssh); len(groups) > 0 {
 				out["portGroups"] = groups
+			}
+			// Its private address, reached from the workspace's machines
+			// that may reach it, and its private card's MAC (for Windows
+			// and setups by hand).
+			if a := privateAddressOf(w); a != "" {
+				out["privateAddress"] = a
+				if mac, _ := block(w, "vm")["privateMac"].(string); mac != "" {
+					out["privateMac"] = mac
+				}
 			}
 		}
 	}
@@ -541,11 +564,15 @@ func cmdCreate(args []string) error {
 	fs.Var(&links, "database", "a machine or a Desktop App: let it reach this database (repeat it for more; nothing goes into the machine)")
 	cores := addCoreFlags(fs)
 	devices := addDevicesFlag(fs)
+	private := addPrivateFlags(fs)
 	_ = fs.Parse(rest)
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
 	}
 	if err := coresLeftovers(cores); err != nil {
+		return err
+	}
+	if err := privateLeftovers(private); err != nil {
 		return err
 	}
 	// A database has no setting: only what links it reaches it. Nothing
@@ -588,6 +615,9 @@ func cmdCreate(args []string) error {
 	}
 	if devices.given() && !isMachine(kind) {
 		return fmt.Errorf("--devices goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows")
+	}
+	if private.given() && !isMachine(kind) {
+		return errors.New(privateOnMachines)
 	}
 	// A machine takes a time zone too (set when it is made); the rest are a
 	// browser's alone.
@@ -721,6 +751,9 @@ func cmdCreate(args []string) error {
 			return err
 		}
 		if err := withMachineTimeZone(body, *file, *timezone); err != nil {
+			return err
+		}
+		if err := withPrivateNetwork(kind, body, *file, private); err != nil {
 			return err
 		}
 	}
@@ -1203,6 +1236,8 @@ func cmdSet(args []string) error {
 	cores := addCoreFlags(fs)
 	devices := addDevicesFlag(fs)
 	fs.String("timezone", "", "refused: a machine's time zone is set when it is made, a browser's with browser locale")
+	fs.String("private-address", "", "refused: a machine's private address is chosen when it is made")
+	fs.Bool("no-private-network", false, "refused: a machine's private address is chosen when it is made")
 	_ = fs.Parse(rest)
 	if err := coresLeftovers(cores); err != nil {
 		return err
@@ -1214,6 +1249,10 @@ func cmdSet(args []string) error {
 	if flagsGiven(fs)["timezone"] {
 		kind, _ := workloadType(id)
 		return setTimeZoneRefusal(id, kind)
+	}
+	if given := flagsGiven(fs); given["private-address"] || given["no-private-network"] {
+		kind, _ := workloadType(id)
+		return setPrivateRefusal(kind)
 	}
 	if *file == "" && len(changes) == 0 && !devices.given() {
 		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], or a machine's --cores, --core-speed, --mixed-speeds or --devices")

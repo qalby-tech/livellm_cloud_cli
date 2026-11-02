@@ -29,7 +29,7 @@ const insideWorkspace = `{"name":"ws","spec":{"workloads":[
 	{"id":"b1","type":"browser","reachableFrom":[]},
 	{"id":"pool","type":"controller","reachableFrom":["edge"],"controller":{"autodiscover":false,"browsers":["b1"]}},
 	{"id":"every","type":"controller","controller":{"autodiscover":true}},
-	{"id":"box","type":"vm-ubuntu","reachableFrom":["*"],"vm":{"ports":[{"name":"web","port":8080},{"name":"pg","port":5432,"tcp":true},{"name":"dns","port":53,"udp":true},{"name":"etcd","port":2380,"internal":true}],"databases":[{"id":"cache"}]}},
+	{"id":"box","type":"vm-ubuntu","reachableFrom":["*"],"vm":{"privateNetwork":true,"privateAddress":"172.16.0.12","ports":[{"name":"web","port":8080},{"name":"pg","port":5432,"tcp":true},{"name":"dns","port":53,"udp":true},{"name":"etcd","port":2380,"internal":true}],"databases":[{"id":"cache"}]}},
 	{"id":"win","type":"vm-windows","reachableFrom":["box"],"vm":{}},
 	{"id":"desk","type":"desktop","reachableFrom":[],"desktop":{"databases":[{"id":"db"}]}}]}}`
 

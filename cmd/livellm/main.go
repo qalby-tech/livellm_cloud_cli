@@ -17,17 +17,20 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm login [--access use|create|full]   sign in: prints a link to allow and returns;
           [--wait]                           run it again to finish (--wait: stay until allowed)
   livellm logout                             end this sign-in
-  livellm whoami                             workspace, plan and usage
+  livellm whoami                             workspace, plan and usage (and the range and gateway of
+                                             its machines' private network, where there is one)
 
   livellm ls [--type TYPE]                   everything, with its state (a database: its engine;
-                                             an object storage of 3 servers: how many are ready)
+                                             an object storage of 3 servers: how many are ready;
+                                             a machine: its private address)
   livellm status [ID]                        how things are running right now
   livellm wait ID [--timeout 15m]            until it is ready (exits non-zero if it isn't)
   livellm install ID                         a new machine's way to its first boot
   livellm database ID                        a database's instances, live
   livellm logs ID [--lines N]                recent logs, and restarts
   livellm connect ID [--tool TOOL]           how to reach it (a Camoufox browser: its Playwright address;
-                                             a machine: its SSH address, and where its port groups are)
+                                             a machine: its SSH address, its private address, and where
+                                             its port groups are)
           [--screen-width PX] [--format png|jpeg]
   livellm exec ID "COMMAND"                  run a command on a machine (PowerShell on Windows)
           [--session S] [--timeout N]   (waits until it ends, up to --timeout)
@@ -81,6 +84,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              file's "devices"
           [--timezone Europe/Moscow]         a machine: its time zone, set when it is made (left out: the
                                              cluster's); change it on the machine itself afterwards
+          [--private-address 172.16.0.12]    a machine: its private address, on its second network card,
+          [--no-private-network]             in a network only this workspace's machines share (left out:
+                                             the next free one, where there is a private network);
+                                             --no-private-network: none; fixed once made
                                              a machine's port groups go in the file: "portGroups"
                                              (livellm connect ID says where they are published)
   livellm create apps -f FILE                an app of several services and its databases, at once:
@@ -338,7 +345,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		err = machineNext(billingNext(networkNext(engineNext(err))))
+		err = privateNext(machineNext(billingNext(networkNext(engineNext(err)))))
 		fmt.Fprintln(os.Stderr, "livellm: "+err.Error())
 		os.Exit(exitCode(err))
 	}

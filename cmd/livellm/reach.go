@@ -611,6 +611,11 @@ func insideAddresses(res string, w map[string]any) []map[string]any {
 			rdp["name"] = "rdp"
 			out = append(out, rdp)
 		}
+		// Its private address, on every port, for the workspace's machines
+		// that may reach it.
+		if a := privateAddressOf(w); a != "" {
+			out = append(out, map[string]any{"host": a, "private": true})
+		}
 		return out
 	case t == "storage":
 		// By engine, as the platform names them: PostgreSQL's primary on
