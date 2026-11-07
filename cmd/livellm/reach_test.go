@@ -136,9 +136,6 @@ func TestGoldenInsideAccess(t *testing.T) {
 		{"api-keys-set-network", func() error {
 			return cmdAPIKeys([]string{"set", "k1", "--permissions", "billing,network"})
 		}},
-		{"api-keys-set-legacy-names", func() error {
-			return cmdAPIKeys([]string{"set", "k1", "--permissions", "network,proxies,profiles"})
-		}},
 		{"api-keys-create-network", func() error {
 			return cmdAPIKeys([]string{"create", "ci", "--permissions", "network"})
 		}},

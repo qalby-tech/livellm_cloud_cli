@@ -9,13 +9,6 @@ var goldenInsideWant = map[string]string{
 == writes
 POST /v1/keys {"name":"ci","permissions":["network"]}
 `,
-	"api-keys-set-legacy-names": `== stdout
-{}
-== stderr
-proxies, profiles: no longer a permission; changing a browser's proxies or moving its profile needs none (ask the user first)
-== writes
-PATCH /v1/keys/k1 {"permissions":["network","proxies","profiles"]}
-`,
 	"api-keys-set-network": `== stdout
 {}
 == stderr

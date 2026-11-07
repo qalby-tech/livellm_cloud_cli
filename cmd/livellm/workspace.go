@@ -257,21 +257,13 @@ func cmdMonitoring(args []string) error {
 // --- API keys ------------------------------------------------------------------
 
 // permissionList reads --permissions: names separated by commas; "none" is
-// an empty list. The old names proxies and profiles go along as typed (the
-// API takes them and keeps nothing), with a word that they gate nothing now.
+// an empty list. Names go as typed: the API refuses one it doesn't know.
 func permissionList(s string) []string {
 	out := []string{}
-	var old []string
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" && p != "none" {
 			out = append(out, p)
-			if p == "proxies" || p == "profiles" {
-				old = append(old, p)
-			}
 		}
-	}
-	if len(old) > 0 {
-		fmt.Fprintf(os.Stderr, "%s: no longer a permission; changing a browser's proxies or moving its profile needs none (ask the user first)\n", strings.Join(old, ", "))
 	}
 	return out
 }

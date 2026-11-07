@@ -3,6 +3,13 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## Unreleased
+
+- `api-keys create|set --permissions` sends the names as typed and no longer
+  says anything of `proxies` and `profiles`: they gate nothing since
+  2026-10-05, and the API refuses them like any name it doesn't know (422,
+  exit 1).
+
 ## 0.12.0
 
 - A machine's private address: `create` of a machine takes
