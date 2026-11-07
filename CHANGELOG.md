@@ -5,6 +5,13 @@ platform and attaches them to the GitHub release.
 
 ## Unreleased
 
+- Too many requests (429 `rate_limited`, the API's request limits from api
+  0.92): every command waits as long as `Retry-After` says, plus a little
+  jitter, and sends the request again, up to 4 more times. A wait over a
+  minute, a 429 on an upload (a stream can't be sent twice) and any other 429
+  (a counter: billing, invitations, a proxy changed moments ago) are passed on
+  as the refusal at once. A wait of 5 seconds or more prints one line on
+  stderr.
 - `api-keys create|set --permissions` sends the names as typed and no longer
   says anything of `proxies` and `profiles`: they gate nothing since
   2026-10-05, and the API refuses them like any name it doesn't know (422,

@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -161,6 +163,28 @@ func doAs(c *http.Client, tok, kind, method, path string, body io.Reader, size i
 	if err != nil {
 		return nil, fmt.Errorf("couldn't reach LiveLLM: %w", err)
 	}
+	// Too many requests: wait as long as Retry-After says (with a little
+	// jitter, so parallel commands don't all come back at once) and send it
+	// again, a few times, when the body can be sent again.
+	// Only the request limits' own 429 (rate_limited) clears by waiting: a
+	// counter's (billing, invitations, a proxy changed moments ago) is passed
+	// on as it came.
+	for try := 1; res.StatusCode == http.StatusTooManyRequests && try <= retryTries; try++ {
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(raw))
+		wait, ok := retryWait(res.Header.Get("Retry-After"), try)
+		if !ok || problemFrom(res.StatusCode, raw).Code != "rate_limited" || !rewind(req, body) {
+			break
+		}
+		if wait >= 5*time.Second {
+			fmt.Fprintf(os.Stderr, "LiveLLM: too many requests; trying again in %s\n", wait.Round(time.Second))
+		}
+		sleep(wait)
+		if res, err = c.Do(req); err != nil {
+			return nil, fmt.Errorf("couldn't reach LiveLLM: %w", err)
+		}
+	}
 	if res.StatusCode >= 400 {
 		defer res.Body.Close()
 		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
@@ -171,6 +195,53 @@ func doAs(c *http.Client, tok, kind, method, path string, body io.Reader, size i
 		return nil, p
 	}
 	return res, nil
+}
+
+// Retrying a 429 of the API's request limits (429 rate_limited, always with
+// Retry-After; any other 429 is a counter that waiting seconds won't clear): at most retryTries more sends, none waiting past retryMaxWait;
+// a Retry-After longer than that (a sign-in or billing counter's minutes) is
+// passed on as the refusal at once.
+const (
+	retryTries   = 4
+	retryMaxWait = 60 * time.Second
+)
+
+// sleep is time.Sleep (tests replace it).
+var sleep = time.Sleep
+
+// retryWait is how long to wait before try (1, 2, …): Retry-After's seconds
+// (1 s, then growing, when it is missing or unreadable) plus up to a quarter
+// more of jitter. ok false: wait no longer, pass the 429 on.
+func retryWait(header string, try int) (time.Duration, bool) {
+	d := time.Duration(1<<(try-1)) * time.Second
+	if n, err := strconv.Atoi(strings.TrimSpace(header)); err == nil && n >= 0 {
+		d = time.Duration(n) * time.Second
+	}
+	if d > retryMaxWait {
+		return 0, false
+	}
+	if d < 200*time.Millisecond {
+		d = 200 * time.Millisecond
+	}
+	return d + time.Duration(rand.Int64N(int64(d/4)+1)), true
+}
+
+// rewind makes req's body readable from the start again: no body, or one
+// that can seek (every JSON body here is a bytes.Reader). A stream (a file
+// being uploaded) can't be sent twice.
+func rewind(req *http.Request, body io.Reader) bool {
+	if body == nil {
+		return true
+	}
+	sk, ok := body.(io.Seeker)
+	if !ok {
+		return false
+	}
+	if _, err := sk.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	req.Body = io.NopCloser(body)
+	return true
 }
 
 // problemFrom reads a refusal: the platform's own words when it wrote JSON,
