@@ -43,6 +43,9 @@ type problem struct {
 	// Cores are the numbers a refusal of a machine's cores carries
 	// (cores.go).
 	Cores *coresRefusal
+	// Field is the part of the body an alert settings refusal names
+	// (alert_settings: settings.cpu.level).
+	Field string
 }
 
 func (p *problem) Error() string {
@@ -254,6 +257,7 @@ func problemFrom(status int, raw []byte) *problem {
 		Code    string   `json:"code"`
 		Next    string   `json:"next"`
 		Missing []string `json:"missing"`
+		Field   string   `json:"field"`
 	}
 	if json.Unmarshal(raw, &e) == nil {
 		msg := e.Error
@@ -267,6 +271,9 @@ func problemFrom(status int, raw []byte) *problem {
 			p.Msg, p.Next, p.Missing = msg, e.Next, e.Missing
 		}
 		p.Code = e.Code
+		if p.Code == "alert_settings" {
+			p.Field = e.Field
+		}
 	}
 	// Read on their own, so a field of another refusal by the same name
 	// never costs it its words.

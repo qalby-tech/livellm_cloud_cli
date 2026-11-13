@@ -445,6 +445,8 @@ livellm template save small-box --from box      # a resource's settings, never i
 livellm create --template small-box --id box2 --secret credentials.username=me --secret-env credentials.password=BOX_PASSWORD
 livellm activity --object web --limit 20        # what happened to web, newest first
 livellm monitoring                              # up or down, uptime, use, open alerts
+livellm alerts web                              # which alerts web gets, and at what level
+livellm alerts set web --memory 97 --down off   # its own memory level; no down alerts
 livellm rdp win-lab -o win-lab.rdp              # a Windows machine's Remote Desktop file
 livellm screenshot win-lab -o now.jpg           # a picture of its screen
 livellm keys set -f ~/.ssh/id_ed25519.pub       # the workspace's SSH keys, replaced
@@ -538,6 +540,28 @@ hours and 7 days, processor, memory and disk use) and the alerts: open ones
 says whether the workspace's owners are emailed when an alert opens and when it
 is over; switch it on the console's Monitoring page. The fields are described at
 [docs.live-llm.com/docs/monitoring](https://docs.live-llm.com/docs/monitoring).
+
+`alerts ID` prints which alerts a resource gets, as the API answers it plus a
+`summary` line a kind (`"CPU: usual (90%)"`, `"Memory: at 97%"`, `"Down:
+off"`). Every resource has `down`, `cpu` and `memory`; `disk` when it keeps
+disks, `gpu` when it uses a GPU. Each is `usual` (the platform's level; on,
+for down and gpu), a level of its own (cpu, memory and disk: a whole percent
+from 50 to 99), or `off`. `alerts set ID` changes only the kinds you name:
+
+```sh
+livellm alerts set web --cpu 95 --memory usual   # CPU at 95%, memory back to the platform's
+livellm alerts set db --disk off                 # no disk alerts for db
+livellm alerts set box --down on --gpu off       # on is the same as usual
+```
+
+CPU and memory alerts open after 5 minutes at or over the level, a disk alert
+at once; turning a kind off closes its open alert within a minute, with no
+email. A value the API refuses names the part and its flag
+(`settings.cpu.level (--cpu): …`, exit 1). The workspace's owners and their
+keys change these; a sign-in with `livellm login` is an agent, which reads them
+but is refused a change (exit 2, in the API's words), and so is a member's
+key. A LiveLLM older than API 0.101.5 says "Alert settings aren't available on
+this server."
 
 `login` asks for full access by default: everything the person who presses
 Allow may do in the workspace. `--access use` or `--access create` narrows it,

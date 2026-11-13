@@ -140,6 +140,10 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm activity [--actor you|platform] [--object ID] [--limit N] [--before EVENT]
                                              what happened, newest first
   livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
+  livellm alerts ID                          the alerts a resource gets: each kind usual, its own level, or off
+  livellm alerts set ID [--cpu usual|off|50-99] [--memory …] [--disk …] [--down on|off] [--gpu on|off]
+                                             change them; a kind left out keeps what it has (an owner
+                                             or a key; an agent sign-in only reads them)
   livellm plan                               the plan, and what the workspace uses of it
   livellm plan catalog                       the plans there are
   livellm plan set PLAN                      change it: only a key with the billing permission (a
@@ -298,6 +302,8 @@ func main() {
 		err = cmdActivity(args)
 	case "monitoring", "monitor":
 		err = cmdMonitoring(args)
+	case "alerts", "alert-settings":
+		err = cmdAlerts(args)
 	case "plan", "billing":
 		err = cmdPlan(args)
 	case "api-keys", "api-key":

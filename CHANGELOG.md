@@ -3,7 +3,23 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
-## Unreleased
+## 0.14.0
+
+- Alert settings per resource: `livellm alerts ID` prints which alerts it gets
+  (down, cpu, memory; disk when it keeps disks, gpu when it uses a GPU), the
+  API's answer with a `summary` line a kind (`"CPU: usual (90%)"`, `"Memory:
+  at 97%"`, `"Down: off"`). `livellm alerts set ID` takes `--cpu`, `--memory`
+  and `--disk` (`usual`, `off` or a level from 50 to 99) and `--down` and
+  `--gpu` (`on`, which is usual, or `off`), and sends only the kinds given: the
+  others keep what they have. A word that isn't one of those (or a number on
+  `--down` or `--gpu`), and `set` with no flag, are refused before anything is
+  sent; a number goes as the level, and one the API refuses (422
+  `alert_settings`) names its part and flag (`settings.cpu.level (--cpu): …`,
+  exit 1). An agent sign-in reads them and is refused a change in the API's
+  words (403, exit 2). An API without them answers "Alert settings aren't
+  available on this server." Needs LiveLLM API 0.101.5 or newer.
+
+## 0.13.0
 
 - Too many requests (429 `rate_limited`, the API's request limits from api
   0.92): every command waits as long as `Retry-After` says, plus a little
