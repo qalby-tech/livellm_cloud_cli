@@ -53,6 +53,34 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm devices                            the devices a machine can be given (a GPU, a USB controller):
                                              how many are free, and this workspace's machines that have one
 
+  livellm gpu models [--use machine|apps] [--from T --to T]
+                                             the GPUs you can rent: price an hour, how many are free now
+                                             (with --from/--to: free cards in each whole UTC hour)
+  livellm gpu ls                             the workspace's GPU rentals (booked, running, ended in 30 days)
+  livellm gpu fit [same flags as rent]       what would fit, and where, without renting anything
+  livellm gpu rent --model M --use machine|apps [--hours N | --ends-at T] [--location L]
+                                             rent one GPU now, charged by the minute until it ends
+                                             (no end: until you release it); --hours N ends on the
+                                             first whole UTC hour at least N hours away
+  livellm gpu rent --cluster 'use=machine,cards=rtx5090:2+a100:1,location=region:eu' ...
+                                             several GPUs on one server per --cluster (repeat it):
+                                             use=machine|apps, cards=MODEL:N[+MODEL:N],
+                                             location=auto|region:R|host:H, target=ID[+ID] (a booking's)
+  livellm gpu book --model M --use U --starts-at T (--ends-at T | --hours N) [--target ID[,ID]]
+                                             book for later (or --cluster …): every booked hour is charged,
+                                             used or not; T is a whole UTC hour, 2026-11-14T10:00:00Z
+  livellm gpu extend ID --ends-at T          a later end
+  livellm gpu use ID machine|apps [--no-wait] change its use (at most once an hour); waits while the GPU
+                                             gets ready for it
+  livellm gpu release ID [--confirm-charge]  release it (charging stops), or cancel a booking; a booking
+                                             within a day of its start is charged in full and needs
+                                             --confirm-charge
+  livellm gpu remove-card ID CARD [--confirm-charge]
+                                             take one GPU off a cluster while nothing runs on it
+                                             (Renting needs a person's key with the billing permission;
+                                             agents only read. Where renting is off: "GPU renting isn't
+                                             offered on this server".)
+
   livellm create TYPE -f FILE                create a resource from a JSON file
                                              a database (storage): "engine": "postgres", "redis" or
                                              "s3" (object storage: S3 buckets, no backups)
@@ -82,6 +110,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
           [--devices a,b]                    a machine: the cluster's devices it has (livellm devices lists
                                              them; it then runs where they are); must agree with the
                                              file's "devices"
+          [--gpu RENTAL]                     a machine, an app (pod) or a Desktop App: the GPU rental it uses
+                                             (livellm gpu ls; a machine: for machine use, an app: for apps)
           [--timezone Europe/Moscow]         a machine: its time zone, set when it is made (left out: the
                                              cluster's); change it on the machine itself afterwards
           [--private-address 172.16.0.12]    a machine: its private address, on its second network card,
@@ -118,6 +148,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
                                              Browser API's cores: dedicated, or shared again
           [--devices a,b|'']                 a machine's devices ('' takes them all off; left out: kept),
                                              at its next restart; must agree with the file's "vm" "devices"
+          [--gpu RENTAL | --no-gpu]          a machine's, an app's or a Desktop App's GPU rental, or none
+                                             (left out: kept)
   livellm build ID [--wait] [--timeout 30m]  build an app from its repository
   livellm builds ID                          an app's builds
   livellm deploy ID BUILD                    run an earlier build again
@@ -302,6 +334,8 @@ func main() {
 		err = cmdActivity(args)
 	case "monitoring", "monitor":
 		err = cmdMonitoring(args)
+	case "gpu", "gpus":
+		err = cmdGPU(args)
 	case "alerts", "alert-settings":
 		err = cmdAlerts(args)
 	case "plan", "billing":

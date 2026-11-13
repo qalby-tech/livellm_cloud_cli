@@ -565,6 +565,7 @@ func cmdCreate(args []string) error {
 	cores := addCoreFlags(fs)
 	devices := addDevicesFlag(fs)
 	private := addPrivateFlags(fs)
+	gpu := addGPUFlags(fs)
 	_ = fs.Parse(rest)
 	if err := reachLeftovers(fs, reach); err != nil {
 		return err
@@ -618,6 +619,12 @@ func cmdCreate(args []string) error {
 	}
 	if private.given() && !isMachine(kind) {
 		return errors.New(privateOnMachines)
+	}
+	if gpu.given() && !gpuKind(kind) {
+		return errors.New(gpuKindsMsg)
+	}
+	if _, err := gpu.value(true); gpu.given() && err != nil {
+		return err
 	}
 	// A machine takes a time zone too (set when it is made); the rest are a
 	// browser's alone.
@@ -744,6 +751,9 @@ func cmdCreate(args []string) error {
 		return err
 	}
 	if err := withCores(kind, body, *file, cores, false); err != nil {
+		return err
+	}
+	if err := withGPU(kind, body, *file, gpu, true); err != nil {
 		return err
 	}
 	if isMachine(kind) {
@@ -1235,6 +1245,7 @@ func cmdSet(args []string) error {
 	file := fs.String("f", "", "a JSON file with the settings that change")
 	cores := addCoreFlags(fs)
 	devices := addDevicesFlag(fs)
+	gpu := addGPUFlags(fs)
 	fs.String("timezone", "", "refused: a machine's time zone is set when it is made, a browser's with browser locale")
 	fs.String("private-address", "", "refused: a machine's private address is chosen when it is made")
 	fs.Bool("no-private-network", false, "refused: a machine's private address is chosen when it is made")
@@ -1254,8 +1265,8 @@ func cmdSet(args []string) error {
 		kind, _ := workloadType(id)
 		return setPrivateRefusal(kind)
 	}
-	if *file == "" && len(changes) == 0 && !devices.given() {
-		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], or a machine's --cores, --core-speed, --mixed-speeds or --devices")
+	if *file == "" && len(changes) == 0 && !devices.given() && !gpu.given() {
+		return fmt.Errorf("pass the changes with -f changes.json, e.g. {\"pod\": {\"cpu\": \"1\"}}, --dedicated-cores[=false], --gpu RENTAL or --no-gpu, or a machine's --cores, --core-speed, --mixed-speeds or --devices")
 	}
 	patch := map[string]any{}
 	if *file != "" {
@@ -1266,7 +1277,7 @@ func cmdSet(args []string) error {
 		if err := json.Unmarshal(raw, &patch); err != nil {
 			return fmt.Errorf("%s isn't a JSON object: %w", *file, err)
 		}
-		if len(patch) == 0 && len(changes) == 0 && !devices.given() {
+		if len(patch) == 0 && len(changes) == 0 && !devices.given() && !gpu.given() {
 			return fmt.Errorf("%s changes nothing", *file)
 		}
 		// A machine's time zone was written into it when it was made: a
@@ -1288,7 +1299,12 @@ func cmdSet(args []string) error {
 	// its values.
 	var w map[string]any
 	kind := ""
-	if len(changes) > 0 || devices.given() {
+	if gpu.given() {
+		if _, err := gpu.value(false); err != nil {
+			return err
+		}
+	}
+	if len(changes) > 0 || devices.given() || gpu.given() {
 		found, err := findWorkload(id)
 		if err != nil {
 			return err
@@ -1301,6 +1317,26 @@ func cmdSet(args []string) error {
 		if devices.given() && !isMachine(kind) {
 			return fmt.Errorf("--devices goes with a machine: vm-ubuntu, vm-ubuntu-desktop or vm-windows")
 		}
+	}
+	// The GPU goes into the kind's own block (vm, pod or desktop), beside
+	// what the file holds there, before an app's dedicated cores are added
+	// to the same block.
+	if gpu.given() {
+		b := linkBlock(kind)
+		if !gpuKind(kind) || b == "" {
+			return errors.New(gpuKindsMsg)
+		}
+		own, ok := patch[b].(map[string]any)
+		if patch[b] != nil && !ok {
+			return fmt.Errorf("%s: %q isn't an object", *file, b)
+		}
+		if own == nil {
+			own = map[string]any{}
+		}
+		if err := withGPU(kind, own, *file, gpu, false); err != nil {
+			return err
+		}
+		patch[b] = own
 	}
 	if len(changes) > 0 {
 		if b := sharedCoresBlock(kind); b != "" {

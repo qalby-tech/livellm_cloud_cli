@@ -3,6 +3,30 @@
 Releasing: add an entry below, then tag `vX.Y.Z`. CI builds a binary for each
 platform and attaches them to the GitHub release.
 
+## 0.15.0
+
+- GPUs by the hour: `livellm gpu models [--use machine|apps] [--from T --to
+  T]` (prices, cards free now, free cards per hour), `gpu ls` (the
+  workspace's rentals), `gpu fit` (what fits, and where, renting nothing),
+  `gpu rent --model M --use machine|apps [--hours N | --ends-at T]
+  [--location auto|region:R|host:H]`, `gpu book … --starts-at T (--ends-at T
+  | --hours N) [--target ID]`, `gpu extend ID --ends-at T`, `gpu use ID
+  machine|apps` (waits while the GPU gets ready; `--no-wait`, `--timeout`),
+  `gpu release ID` and `gpu remove-card ID CARD`. Each prints the API's
+  answer with a `summary`. Several GPUs at once: `--cluster
+  'use=machine,cards=rtx5090:2+a100:1,location=region:eu,target=box'`, once per
+  cluster. `--hours N` ends on the first whole UTC hour at least N hours away.
+- A booking released within a day of its start is charged in full: without
+  `--confirm-charge`, `gpu release` and `gpu remove-card` stop with the API's
+  words and "add --confirm-charge to accept the charge" (exit 1); with it they
+  send the request again with `confirm`, only after the API asked for it.
+- Where renting is off, every `gpu` command says "GPU renting isn't offered on
+  this server" (404, exit 1). An agent sign-in reads but can't rent: refused in
+  the API's words (403, exit 2).
+- `create` of a machine, an app or a Desktop App takes `--gpu RENTAL`; `set`
+  takes `--gpu RENTAL` or `--no-gpu` (sent as `gpu: ""`); left out, the GPU is
+  kept. Needs LiveLLM API 0.101 or newer.
+
 ## 0.14.0
 
 - Alert settings per resource: `livellm alerts ID` prints which alerts it gets

@@ -479,6 +479,75 @@ as you go is off, past its limit or not yet open to the account, the error
 says what to do next (exit 2). On an organization's workspace its owners
 manage the plan in the console: `plan set` and `plan payg` answer 409 there.
 
+## GPUs by the hour
+
+```sh
+livellm gpu models                                   # what you can rent: price an hour, free now
+livellm gpu models --use machine --from 2026-11-14T08:00:00Z --to 2026-11-14T20:00:00Z
+                                                     # free cards in each hour
+livellm gpu fit --model rtx5090 --use machine        # would it fit, and where (rents nothing)
+livellm gpu rent --model rtx5090 --use machine --hours 4
+livellm set box --gpu g-3f9a12bc                     # the machine takes it
+livellm gpu book --model rtx5090 --use apps --starts-at 2026-11-14T10:00:00Z --hours 3 --target web,api
+livellm gpu rent --hours 2 \
+  --cluster 'use=machine,cards=rtx5090:2,location=region:eu' \
+  --cluster 'use=apps,cards=l4:1+a100:1'             # several GPUs: one server per cluster
+livellm gpu ls                                       # the workspace's rentals
+livellm gpu extend g-3f9a12bc --ends-at 2026-11-14T18:00:00Z
+livellm gpu use g-3f9a12bc apps                      # waits until the GPU is ready for apps
+livellm set box --no-gpu && livellm gpu release g-3f9a12bc
+```
+
+A rental is for a machine (`--use machine`: one machine gets the whole card)
+or for apps (`--use apps`: apps and Desktop Apps share it). A machine, an app
+or a Desktop App takes a rental by its id: `create … --gpu ID` or `set ID
+--gpu ID`; `set ID --no-gpu` takes it off, and a set that leaves both out
+keeps it.
+
+Times are whole UTC hours, written `2026-11-14T10:00:00Z` (`2026-11-14
+10:00` is read as UTC too). `--hours N` ends on the first whole UTC hour at
+least N hours away (from now for `rent`, from `--starts-at` for `book`), so a
+rental now may run up to an hour longer than asked; the summary says when it
+ends. A rental now with no end runs until you release it. `gpu rent` and `gpu
+book` print the rental (`rental`, or `clusters`) and a `summary`.
+
+Several GPUs at once are clusters, one `--cluster` each, as comma-separated
+`key=value` pairs:
+
+| key | value |
+|---|---|
+| `use` | `machine` or `apps` (required) |
+| `cards` | `MODEL:N`, several joined by `+` (`rtx5090:2+a100:1`); `cards=` may repeat; `MODEL` alone is 1 |
+| `location` | `auto` (the default), `region:NAME` or `host:NAME` (`livellm hosts`) |
+| `target` | a booking's machine, or its apps joined by `+` |
+
+With `--cluster`, `--model`, `--use`, `--location` and `--target` are refused:
+they go into each cluster. A cluster's GPUs are all on one server, rented,
+extended, released and changed in use together. Where clusters aren't offered
+a cluster of more than one GPU is refused (422 `gpu_clusters_off`, in the
+API's words).
+
+Renting spends money. A rental now is charged by the minute until it ends; a
+booking for every booked hour, used or not. GPUs are pay as you go. Releasing
+a booking more than 24 hours before its start is free; later it is charged in
+full, and `gpu release` (and `gpu remove-card` for a booked GPU of a cluster)
+stops with the API's words and "add --confirm-charge to accept the charge"
+(exit 1). With `--confirm-charge` it sends the request again naming the
+rental (or the GPU) as the API asks; it never sends that by itself, and a
+free release never carries it.
+
+`gpu use ID machine|apps` changes a running rental's use (at most once an
+hour, with nothing using it) and waits while the GPU gets ready
+(`--timeout`, 15 minutes by default; `--no-wait` returns at once). `gpu
+remove-card ID CARD` takes one GPU (`cards[].id` in `gpu ls`) off a cluster
+while nothing runs on it.
+
+Renting, extending, changing use and releasing need a person, or an API key a
+person gave the billing permission; a sign-in with `livellm login` is an
+agent, which reads (`models`, `ls`, `fit`) but is refused the rest in the
+API's words (exit 2). Where renting is off, every `gpu` command says "GPU
+renting isn't offered on this server" (exit 1).
+
 ## Inside the workspace
 
 Resources in a workspace can't reach each other unless the user allows it. A
