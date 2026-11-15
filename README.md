@@ -447,6 +447,8 @@ livellm activity --object web --limit 20        # what happened to web, newest f
 livellm monitoring                              # up or down, uptime, use, open alerts
 livellm alerts web                              # which alerts web gets, and at what level
 livellm alerts set web --memory 97 --down off   # its own memory level; no down alerts
+livellm driver box                              # box's NVIDIA driver: working, installing, restart needed…
+livellm driver install box                      # a machine made before the driver program gets it
 livellm rdp win-lab -o win-lab.rdp              # a Windows machine's Remote Desktop file
 livellm screenshot win-lab -o now.jpg           # a picture of its screen
 livellm keys set -f ~/.ssh/id_ed25519.pub       # the workspace's SSH keys, replaced
@@ -622,6 +624,16 @@ livellm alerts set web --cpu 95 --memory usual   # CPU at 95%, memory back to th
 livellm alerts set db --disk off                 # no disk alerts for db
 livellm alerts set box --down on --gpu off       # on is the same as usual
 ```
+
+`driver ID` prints a machine's NVIDIA driver as the API answers it (`state`,
+`detail`, the end of its `log`) plus a `summary` in words and, where
+something is to be done, `next`. Every machine made on LiveLLM API 0.101.9 or
+newer installs the driver by itself when it has an NVIDIA card (Ubuntu,
+Debian, Fedora and Windows); `driver install ID` puts that program on a
+machine made before it, or tries a failed install again. It answers at once
+(`installing`) and the install runs in the machine (up to 20 minutes); an
+Ubuntu machine may then ask for one restart (`restart-needed`). The platform
+never restarts the machine for it. The machine must be running.
 
 CPU and memory alerts open after 5 minutes at or over the level, a disk alert
 at once; turning a kind off closes its open alert within a minute, with no

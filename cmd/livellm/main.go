@@ -172,6 +172,8 @@ const usage = `livellm — your machines, browsers, apps and databases.
   livellm activity [--actor you|platform] [--object ID] [--limit N] [--before EVENT]
                                              what happened, newest first
   livellm monitoring [ID] [--range 24h]      up or down, uptime, use and alerts
+  livellm driver ID                          a machine's NVIDIA driver: working, installing, restart needed, failed…
+  livellm driver install ID                  put the NVIDIA driver program on a machine made before it, or try a failed install again
   livellm alerts ID                          the alerts a resource gets: each kind usual, its own level, or off
   livellm alerts set ID [--cpu usual|off|50-99] [--memory …] [--disk …] [--down on|off] [--gpu on|off]
                                              change them; a kind left out keeps what it has (an owner
@@ -336,6 +338,8 @@ func main() {
 		err = cmdMonitoring(args)
 	case "gpu", "gpus":
 		err = cmdGPU(args)
+	case "driver", "gpu-driver":
+		err = cmdDriver(args)
 	case "alerts", "alert-settings":
 		err = cmdAlerts(args)
 	case "plan", "billing":

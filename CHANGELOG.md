@@ -23,6 +23,11 @@ platform and attaches them to the GitHub release.
 - Where renting is off, every `gpu` command says "GPU renting isn't offered on
   this server" (404, exit 1). An agent sign-in reads but can't rent: refused in
   the API's words (403, exit 2).
+- A machine's NVIDIA driver: `livellm driver ID` (its state with a
+  `summary` in words, and `next` where something is to be done) and `livellm
+  driver install ID` (puts the driver program on a machine made before it, or
+  tries a failed install again; answers at once). Needs LiveLLM API 0.101.9
+  or newer; an older one says so.
 - `create` of a machine, an app or a Desktop App takes `--gpu RENTAL`; `set`
   takes `--gpu RENTAL` or `--no-gpu` (sent as `gpu: ""`); left out, the GPU is
   kept. Needs LiveLLM API 0.101 or newer.
